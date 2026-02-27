@@ -12,6 +12,7 @@ func init() {
 func upCreateIAMCollections(app core.App) error {
 	// --- 1. iam_managed_collections ---
 	managedCols := core.NewBaseCollection("iam_managed_collections")
+	managedCols.System = true
 	managedCols.Fields.Add(&core.TextField{
 		Name:     "collection_name",
 		Required: true,
@@ -23,6 +24,7 @@ func upCreateIAMCollections(app core.App) error {
 
 	// --- 2. iam_policies ---
 	policies := core.NewBaseCollection("iam_policies")
+	policies.System = true
 	policies.Fields.Add(&core.TextField{
 		Name:     "name",
 		Required: true,
@@ -43,6 +45,7 @@ func upCreateIAMCollections(app core.App) error {
 
 	// --- 3. iam_roles ---
 	roles := core.NewBaseCollection("iam_roles")
+	roles.System = true
 	roles.Fields.Add(&core.TextField{
 		Name:     "name",
 		Required: true,
@@ -59,6 +62,7 @@ func upCreateIAMCollections(app core.App) error {
 
 	// --- 4. iam_groups ---
 	groups := core.NewBaseCollection("iam_groups")
+	groups.System = true
 	groups.Fields.Add(&core.TextField{
 		Name:     "name",
 		Required: true,
@@ -81,6 +85,7 @@ func upCreateIAMCollections(app core.App) error {
 
 	// --- 5. iam_role_policies ---
 	rolePolicies := core.NewBaseCollection("iam_role_policies")
+	rolePolicies.System = true
 	rolePolicies.Fields.Add(&core.RelationField{
 		Name:          "role",
 		CollectionId:  roles.Id,
@@ -100,6 +105,7 @@ func upCreateIAMCollections(app core.App) error {
 
 	// --- 6. iam_user_policies ---
 	userPolicies := core.NewBaseCollection("iam_user_policies")
+	userPolicies.System = true
 	userPolicies.Fields.Add(&core.RelationField{
 		Name:          "user",
 		CollectionId:  usersCol.Id,
@@ -119,6 +125,7 @@ func upCreateIAMCollections(app core.App) error {
 
 	// --- 7. iam_user_roles ---
 	userRoles := core.NewBaseCollection("iam_user_roles")
+	userRoles.System = true
 	userRoles.Fields.Add(&core.RelationField{
 		Name:          "user",
 		CollectionId:  usersCol.Id,
@@ -138,6 +145,7 @@ func upCreateIAMCollections(app core.App) error {
 
 	// --- 8. iam_group_users ---
 	groupUsers := core.NewBaseCollection("iam_group_users")
+	groupUsers.System = true
 	groupUsers.Fields.Add(&core.RelationField{
 		Name:          "group",
 		CollectionId:  groups.Id,
@@ -157,6 +165,7 @@ func upCreateIAMCollections(app core.App) error {
 
 	// --- 9. iam_group_policies ---
 	groupPolicies := core.NewBaseCollection("iam_group_policies")
+	groupPolicies.System = true
 	groupPolicies.Fields.Add(&core.RelationField{
 		Name:          "group",
 		CollectionId:  groups.Id,
