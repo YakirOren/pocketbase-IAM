@@ -5,7 +5,86 @@
 Admin-only dashboard for managing the PocketBase IAM system. Full CRUD management of all IAM entities (policies, roles, groups, user assignments, managed collections) plus a Policy Simulator for testing permissions.
 
 **Audience:** App admins / superusers only.
-**Tech stack:** Undecided — this document defines features, UI components, and UX flow independent of framework choice.
+
+---
+
+## Tech Stack
+
+| Layer | Choice | Notes |
+|-------|--------|-------|
+| Framework | Refine + React 19 + TypeScript | CRUD framework — list/create/edit/show pages, auth, data fetching out of the box |
+| Build tool | Vite | Refine's default |
+| Routing | React Router v7 (via Refine) | Refine manages route generation per resource |
+| Data Provider | `refine-pocketbase` | Community provider — dataProvider, authProvider, liveProvider |
+| UI Components | shadcn/ui (Radix + Tailwind) | Refine is headless — shadcn renders the actual components |
+| Data Table | TanStack Table (via shadcn) | Refine's `useTable` feeds data into shadcn's DataTable |
+| Styling | Tailwind CSS v4 | shadcn dependency |
+| Icons | Lucide React | Already bundled with shadcn/ui |
+| JSON Editor | CodeMirror 6 | Policy document raw editor with syntax highlighting + validation |
+| Deployment | Embedded in PocketBase | Vite builds to `pb_public/`, served by PB binary |
+
+## Project Structure
+
+```
+pocketbase-IAM/
+├── main.go
+├── go.mod / go.sum
+├── iam/                          # Go — IAM engine
+│   ├── policy.go
+│   ├── helpers.go
+│   ├── cache.go
+│   ├── engine.go
+│   ├── routes.go
+│   ├── middleware.go
+│   └── setup.go
+├── migrations/
+│   └── 1_create_iam_collections.go
+├── ui/                           # React — Admin dashboard
+│   ├── package.json
+│   ├── vite.config.ts
+│   ├── tsconfig.json
+│   ├── src/
+│   │   ├── App.tsx
+│   │   ├── providers/            # Refine providers (auth, data, router)
+│   │   ├── pages/                # One folder per resource
+│   │   │   ├── policies/         # list, create, edit, show
+│   │   │   ├── roles/
+│   │   │   ├── groups/
+│   │   │   ├── users/
+│   │   │   ├── managed-collections/
+│   │   │   └── simulator/
+│   │   └── components/           # Shared UI components
+│   │       ├── policy-form-builder/
+│   │       ├── effective-permissions-table/
+│   │       ├── entity-chip-list/
+│   │       ├── entity-picker/
+│   │       ├── json-editor/
+│   │       └── layout/
+│   └── components.json           # shadcn/ui config
+├── pb_public/                    # Vite build output (gitignored)
+├── pb_data/                      # Runtime data (gitignored)
+└── docs/
+    └── plans/
+```
+
+### What Refine provides (no custom code needed)
+
+- Resource-based CRUD routing and data fetching for all IAM collections
+- `useTable` — pagination, sorting, filtering wired to PB API
+- `useForm` — create/edit forms with validation and submit handling
+- `useOne` / `useMany` — record fetching with relation expansion
+- `useCustom` — calls to `/api/iam/simulate`
+- Auth — login/logout/identity via PB auth with route guards
+- Live updates — realtime subscriptions via PB SSE, tables auto-refresh
+- Breadcrumbs, sidebar, layout scaffolding
+
+### What we build custom
+
+- PolicyFormBuilder + StatementCard (visual policy document editor)
+- EffectivePermissionsTable (merged Allow/Deny with source attribution)
+- Policy Simulator page (custom endpoint + evaluation trace display)
+- Managed Collections page (two-section register/unregister layout)
+- EntityChipList (attach/detach policies, users, roles, groups)
 
 ---
 

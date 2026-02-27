@@ -25,7 +25,7 @@ IAM enforcement only applies to collections explicitly registered in the `iam_ma
 - Internal/system collections stay unaffected
 - Admin explicitly controls which collections IAM protects
 
-When a collection is registered as IAM-managed, its PB rules are auto-set to `""` (open) so IAM becomes the sole action-level gatekeeper. Admins can still add PB rule expressions for **row-level filtering** (e.g., `@request.auth.id = user`).
+When a collection is registered as IAM-managed, its PB rules are auto-set to `@request.auth.id != ''` (authenticated-only) so IAM becomes the sole action-level gatekeeper for authenticated users, while unauthenticated requests are blocked at the PB rule layer. Admins can still add PB rule expressions for **row-level filtering** (e.g., `@request.auth.id = user`).
 
 ### Unauthenticated requests bypass IAM
 
@@ -125,18 +125,19 @@ A hook on create for each join table checks if a record with the same combinatio
 ## 1. Project Structure
 
 ```
-pocketbaseIAM/
+pocketbase-IAM/
 ├── main.go                 # Entry point: boot PocketBase, register IAM
 ├── go.mod / go.sum
 ├── iam/
-│   ├── collections.go      # Collection schema definitions + bootstrap
 │   ├── policy.go           # Policy document types + parsing + validation
-│   ├── engine.go           # Permission evaluation engine
-│   ├── cache.go            # In-memory policy cache with TTL
-│   ├── routes.go           # 1 custom route: check
-│   ├── middleware.go       # PocketBase hooks for enforcement + validation + cache invalidation
-│   └── helpers.go          # Wildcard matching utilities
-├── migrations/             # Auto-generated PocketBase migrations
+│   ├── helpers.go          # Wildcard matching, action string builder
+│   ├── cache.go            # LRU+TTL cache wrapping ttlcache/v3
+│   ├── engine.go           # Permission evaluation (collect + evaluate)
+│   ├── routes.go           # POST /api/iam/check
+│   ├── middleware.go       # All hooks (~32 bindings)
+│   └── setup.go            # RegisterRoutes + RegisterHooks entry points
+├── migrations/
+│   └── 1_create_iam_collections.go   # Creates all 9 IAM collections
 └── pb_data/                # Runtime data (gitignored)
 ```
 
@@ -149,7 +150,7 @@ pocketbaseIAM/
 |-------|------|----------|-------|
 | collection_name | Text | yes | Name of the PB collection to enforce IAM on (unique) |
 
-**Rules:** Superuser-only CRUD. When a record is created here, IAM auto-sets the target collection's PB rules to `""` (open) for all operations. When removed, PB rules are restored to `nil`.
+**Rules:** Superuser-only CRUD. When a record is created here, IAM auto-sets the target collection's PB rules to `@request.auth.id != ''` (authenticated-only) for all operations, blocking unauthenticated access while letting IAM gate authenticated users. When removed, PB rules are restored to `nil`.
 
 ### `iam_policies` (base)
 | Field | Type | Required | Notes |
@@ -202,7 +203,7 @@ pocketbaseIAM/
 | group | Relation → iam_groups | yes | CascadeDelete: true |
 | policy | Relation → iam_policies | yes | CascadeDelete: true |
 
-All join tables: superuser-only CRUD. CascadeDelete on all relations. Duplicate-prevention hook on create.
+All join tables: superuser-only CRUD. CascadeDelete on all relations. Duplicate-prevention hook on create. Unique composite indexes on both relation fields (defense-in-depth against race conditions).
 
 ---
 
@@ -238,7 +239,7 @@ All join tables: superuser-only CRUD. CascadeDelete on all relations. Duplicate-
 - `version` must be non-empty string
 - `statement` must be non-empty array
 - Each statement: `effect` is "Allow" or "Deny", non-empty `action[]`, non-empty `resource[]`
-- Action strings must contain at least one `:` separator
+- Action strings must contain at least one `:` separator, or be a lone `*` (match-all)
 - Invalid → 400 Bad Request
 
 ---
@@ -274,17 +275,23 @@ After IAM passes, PB's collection rules run for row-level filtering.
 
 ### `main.go`
 - `pocketbase.New()`, register migrate command
-- `iam.Bootstrap(app)` — ensure 9 IAM collections exist on boot
+- `_ "pocketbase-iam/migrations"` — auto-run migrations on boot
 - `iam.RegisterRoutes(app)` — 1 custom endpoint
-- `iam.RegisterHooks(app)` — all hooks (enforcement, validation, cache, duplicate prevention, managed-collection rules sync)
+- `iam.RegisterHooks(app)` — all hooks (enforcement, validation, cache, duplicate prevention, managed-collection rules sync + boot sync)
 - `app.Start()`
 
-### `iam/collections.go`
-- `Bootstrap(app)` — creates all 9 IAM collections if they don't exist
+### `migrations/1_create_iam_collections.go`
+- Single migration creating all 9 IAM collections in order (entity tables first, then join tables)
 - Uses `core.NewBaseCollection()` with typed fields
 - `core.RelationField` with `CascadeDelete: true` on all join tables
+- Unique composite indexes on all 5 join tables
 - Sets collection rules: superuser-only write, authenticated read on iam_policies/iam_roles/iam_groups
-- `SyncManagedCollectionRules(app)` — reads `iam_managed_collections`, sets target collections' PB rules to `""`. Called on boot.
+- `downFunc` deletes all 9 in reverse order
+
+### `iam/setup.go`
+- `RegisterRoutes(app)` — creates shared cache, registers custom route
+- `RegisterHooks(app)` — creates shared cache, registers all hooks + boot sync
+- `SyncManagedCollectionRules(app)` — reads `iam_managed_collections`, sets target collections' PB rules to `@request.auth.id != ''`. Called on boot.
 
 ### `iam/policy.go`
 - `PolicyDocument`, `Statement` structs
@@ -301,7 +308,7 @@ After IAM passes, PB's collection rules run for row-level filtering.
 
 ### `iam/engine.go`
 - `Evaluate(app core.App, cache *PolicyCache, userID, action, resource string) (bool, error)`
-- `collectPolicies(app, userID) ([]Statement, error)` — fetches from all 3 sources
+- `collectStatements(app, userID) ([]Statement, error)` — collects all unique policy IDs from 3 sources, then batch-fetches in one query
 - `evaluateStatements(statements, action, resource) (allowed bool, reason string)` — returns reason for logging
 - `IsManagedCollection(app, cache, collectionName) bool` — checks registry (also cached)
 
@@ -325,7 +332,7 @@ After IAM passes, PB's collection rules run for row-level filtering.
   - Smart invalidation: only affected users, not the whole cache
   - `iam_policies` update → find users with that policy via join tables, invalidate them
 - **Managed-collection sync hooks:** `OnRecordCreate/Delete("iam_managed_collections")`
-  - On create: set target collection's PB rules to `""`, invalidate managed-collection cache
+  - On create: set target collection's PB rules to `@request.auth.id != ''`, invalidate managed-collection cache
   - On delete: set target collection's PB rules back to `nil`, invalidate cache
 
 ### `iam/helpers.go`
@@ -337,13 +344,14 @@ After IAM passes, PB's collection rules run for row-level filtering.
 ## 6. Implementation Order
 
 1. `go.mod` + `main.go` — scaffold project, PocketBase dependency
-2. `iam/policy.go` — types and validation (no deps)
-3. `iam/helpers.go` — wildcard matching (no deps)
-4. `iam/cache.go` — in-memory cache (no deps)
-5. `iam/collections.go` — create 9 IAM collections + sync managed collection rules
+2. `migrations/1_create_iam_collections.go` — 9 collections + indexes
+3. `iam/policy.go` — types and validation (no deps)
+4. `iam/helpers.go` — wildcard matching (no deps)
+5. `iam/cache.go` — LRU+TTL cache (no deps)
 6. `iam/engine.go` — permission evaluation engine
 7. `iam/routes.go` — 1 custom endpoint
 8. `iam/middleware.go` — all hooks (enforcement, validation, cache, duplicates, managed-collection sync)
+9. `iam/setup.go` — wiring (RegisterRoutes + RegisterHooks)
 
 ---
 
@@ -351,11 +359,11 @@ After IAM passes, PB's collection rules run for row-level filtering.
 
 1. **Boot**: `go run . serve` — all 9 IAM collections appear in PB admin UI
 2. **Opt-in**: Create "posts" collection, verify IAM does NOT enforce on it yet
-3. **Register collection**: Add "posts" to `iam_managed_collections` → PB rules auto-set to `""`
+3. **Register collection**: Add "posts" to `iam_managed_collections` → PB rules auto-set to `@request.auth.id != ''`
 4. **Policy validation**: Create iam_policies with invalid JSON → 400
 5. **Duplicate prevention**: Try attaching same policy to same user twice → 400
 6. **Permission enforcement**: Create Allow policy for `collections:posts:read`, attach to user → user CAN read, CANNOT write
-7. **Public access**: Unregister "posts" from IAM, set PB rule to `""` → unauthenticated users can read (IAM bypassed)
+7. **Public access**: Unauthenticated request to IAM-managed collection → blocked by PB rules (`@request.auth.id != ''`). Unregister collection + set PB rule to `""` manually → unauthenticated users can read
 8. **Deny overrides Allow**: Attach Deny policy → read blocked
 9. **Groups**: Add user to group with policy → user inherits
 10. **Multiple roles**: 2 roles with different policies → union applies
