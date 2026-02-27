@@ -4,6 +4,7 @@ import (
 	"database/sql"
 	"errors"
 	"fmt"
+	"strings"
 
 	"github.com/pocketbase/dbx"
 	"github.com/pocketbase/pocketbase/core"
@@ -12,19 +13,20 @@ import (
 // Evaluate checks if a user is allowed to perform an action on a resource.
 // It collects all policy statements from direct, group, and role attachments,
 // then applies deny-overrides-allow evaluation.
-func Evaluate(app core.App, cache *PolicyCache, userID, action, resource string) (bool, error) {
+// Returns (allowed, reason, error) where reason describes the evaluation outcome.
+func Evaluate(app core.App, cache *PolicyCache, userID, action, resource string) (bool, string, error) {
 	stmts, ok := cache.GetPolicies(userID)
 	if !ok {
 		var err error
 		stmts, err = collectStatements(app, userID)
 		if err != nil {
-			return false, fmt.Errorf("failed to collect statements: %w", err)
+			return false, "", fmt.Errorf("failed to collect statements: %w", err)
 		}
 		cache.SetPolicies(userID, stmts)
 	}
 
-	allowed, _ := evaluateStatements(stmts, action, resource)
-	return allowed, nil
+	allowed, reason := evaluateStatements(stmts, action, resource)
+	return allowed, reason, nil
 }
 
 // IsManagedCollection checks if a collection is IAM-managed
@@ -54,7 +56,7 @@ func IsManagedCollection(app core.App, cache *PolicyCache, collectionName string
 
 // collectStatements gathers all policy statements applicable to a user
 // from direct policies, group policies, and role policies. It batch-fetches
-// all unique policy IDs in a single query to avoid N+1.
+// intermediate and final queries to avoid N+1.
 func collectStatements(app core.App, userID string) ([]Statement, error) {
 	policyIDs := make(map[string]struct{})
 
@@ -72,7 +74,7 @@ func collectStatements(app core.App, userID string) ([]Statement, error) {
 		policyIDs[r.GetString("policy")] = struct{}{}
 	}
 
-	// 2. Group policies (iam_group_users → iam_group_policies)
+	// 2. Group policies (iam_group_users → iam_group_policies) — batched
 	groupUserRecords, err := app.FindRecordsByFilter(
 		"iam_group_users",
 		"user = {:uid}",
@@ -82,23 +84,27 @@ func collectStatements(app core.App, userID string) ([]Statement, error) {
 	if err != nil {
 		return nil, fmt.Errorf("failed to fetch group memberships: %w", err)
 	}
-	for _, gu := range groupUserRecords {
-		groupID := gu.GetString("group")
+	if len(groupUserRecords) > 0 {
+		groupIDs := make([]string, len(groupUserRecords))
+		for i, gu := range groupUserRecords {
+			groupIDs[i] = gu.GetString("group")
+		}
+		filter, params := buildInFilter("group", groupIDs)
 		groupPolicyRecords, err := app.FindRecordsByFilter(
 			"iam_group_policies",
-			"group = {:gid}",
+			filter,
 			"", 0, 0,
-			dbx.Params{"gid": groupID},
+			params,
 		)
 		if err != nil {
-			return nil, fmt.Errorf("failed to fetch group policies for group %s: %w", groupID, err)
+			return nil, fmt.Errorf("failed to fetch group policies: %w", err)
 		}
 		for _, gp := range groupPolicyRecords {
 			policyIDs[gp.GetString("policy")] = struct{}{}
 		}
 	}
 
-	// 3. Role policies (iam_user_roles → iam_role_policies)
+	// 3. Role policies (iam_user_roles → iam_role_policies) — batched
 	roleRecords, err := app.FindRecordsByFilter(
 		"iam_user_roles",
 		"user = {:uid}",
@@ -108,16 +114,20 @@ func collectStatements(app core.App, userID string) ([]Statement, error) {
 	if err != nil {
 		return nil, fmt.Errorf("failed to fetch user roles: %w", err)
 	}
-	for _, ur := range roleRecords {
-		roleID := ur.GetString("role")
+	if len(roleRecords) > 0 {
+		roleIDs := make([]string, len(roleRecords))
+		for i, ur := range roleRecords {
+			roleIDs[i] = ur.GetString("role")
+		}
+		filter, params := buildInFilter("role", roleIDs)
 		rolePolicyRecords, err := app.FindRecordsByFilter(
 			"iam_role_policies",
-			"role = {:rid}",
+			filter,
 			"", 0, 0,
-			dbx.Params{"rid": roleID},
+			params,
 		)
 		if err != nil {
-			return nil, fmt.Errorf("failed to fetch role policies for role %s: %w", roleID, err)
+			return nil, fmt.Errorf("failed to fetch role policies: %w", err)
 		}
 		for _, rp := range rolePolicyRecords {
 			policyIDs[rp.GetString("policy")] = struct{}{}
@@ -129,13 +139,12 @@ func collectStatements(app core.App, userID string) ([]Statement, error) {
 		return nil, nil
 	}
 
-	// Batch-fetch all unique policies in one query
-	filter := buildIDFilter(policyIDs)
-	policyRecords, err := app.FindRecordsByFilter(
-		"iam_policies",
-		filter,
-		"", 0, 0,
-	)
+	// Batch-fetch all unique policies using FindRecordsByIds (safe, no SQL injection)
+	idSlice := make([]string, 0, len(policyIDs))
+	for id := range policyIDs {
+		idSlice = append(idSlice, id)
+	}
+	policyRecords, err := app.FindRecordsByIds("iam_policies", idSlice)
 	if err != nil {
 		return nil, fmt.Errorf("failed to batch-fetch policies: %w", err)
 	}
@@ -157,19 +166,17 @@ func collectStatements(app core.App, userID string) ([]Statement, error) {
 	return allStatements, nil
 }
 
-// buildIDFilter constructs a PocketBase filter expression to match multiple IDs.
-// e.g. "id = 'abc' || id = 'def'"
-func buildIDFilter(ids map[string]struct{}) string {
-	parts := make([]string, 0, len(ids))
-	for id := range ids {
-		parts = append(parts, fmt.Sprintf("id = '%s'", id))
+// buildInFilter constructs a parameterized PocketBase filter for matching
+// multiple values on a field. e.g. "field = {:p0} || field = {:p1}"
+func buildInFilter(field string, ids []string) (string, dbx.Params) {
+	params := dbx.Params{}
+	parts := make([]string, len(ids))
+	for i, id := range ids {
+		key := fmt.Sprintf("p%d", i)
+		parts[i] = fmt.Sprintf("%s = {:%s}", field, key)
+		params[key] = id
 	}
-
-	result := parts[0]
-	for i := 1; i < len(parts); i++ {
-		result += " || " + parts[i]
-	}
-	return result
+	return strings.Join(parts, " || "), params
 }
 
 // evaluateStatements applies deny-overrides-allow evaluation to a set of statements.

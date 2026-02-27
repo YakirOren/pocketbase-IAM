@@ -28,13 +28,13 @@ func registerEnforcementHooks(app core.App, cache *PolicyCache) {
 		}
 
 		action := ActionForOperation(collectionName, operation)
-		allowed, err := Evaluate(app, cache, auth.Id, action, "*")
+		allowed, reason, err := Evaluate(app, cache, auth.Id, action, "*")
 		if err != nil {
 			app.Logger().Error("IAM evaluation error", "error", err, "user", auth.Id, "action", action)
 			return apis.NewApiError(500, "internal error", nil)
 		}
 		if !allowed {
-			app.Logger().Warn("IAM access denied", "user", auth.Id, "action", action)
+			app.Logger().Warn("IAM access denied", "user", auth.Id, "action", action, "reason", reason)
 			return apis.NewForbiddenError("access denied", nil)
 		}
 		return next()

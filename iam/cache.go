@@ -79,3 +79,9 @@ func (c *PolicyCache) SetManagedCollection(name string, managed bool) {
 func (c *PolicyCache) InvalidateManagedCollection(name string) {
 	c.managed.Delete(name)
 }
+
+// Stop cleanly shuts down the cache's background cleanup goroutines.
+func (c *PolicyCache) Stop() {
+	c.policies.Stop()
+	c.managed.Stop()
+}

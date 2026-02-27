@@ -1,16 +1,21 @@
 package iam
 
 import (
+	"sync"
+
 	"github.com/pocketbase/pocketbase/core"
 	"github.com/pocketbase/pocketbase/tools/types"
 )
 
-var sharedCache *PolicyCache
+var (
+	sharedCache     *PolicyCache
+	sharedCacheOnce sync.Once
+)
 
 func getOrCreateCache() *PolicyCache {
-	if sharedCache == nil {
+	sharedCacheOnce.Do(func() {
 		sharedCache = NewPolicyCache()
-	}
+	})
 	return sharedCache
 }
 

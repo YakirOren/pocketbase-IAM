@@ -25,7 +25,7 @@ func registerRoutes(app core.App, cache *PolicyCache) {
 
 			userID := e.Auth.Id
 
-			allowed, err := Evaluate(app, cache, userID, body.Action, body.Resource)
+			allowed, reason, err := Evaluate(app, cache, userID, body.Action, body.Resource)
 			if err != nil {
 				app.Logger().Error("IAM evaluation error",
 					"user", userID,
@@ -41,6 +41,7 @@ func registerRoutes(app core.App, cache *PolicyCache) {
 					"user", userID,
 					"action", body.Action,
 					"resource", body.Resource,
+					"reason", reason,
 				)
 			}
 
