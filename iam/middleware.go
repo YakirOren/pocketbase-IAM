@@ -1,6 +1,8 @@
 package iam
 
 import (
+	"strings"
+
 	"github.com/pocketbase/dbx"
 	"github.com/pocketbase/pocketbase/apis"
 	"github.com/pocketbase/pocketbase/core"
@@ -115,35 +117,54 @@ func registerDuplicatePreventionHooks(app core.App) {
 // or policy documents change.
 func registerCacheInvalidationHooks(app core.App, cache *PolicyCache) {
 	// Helper: invalidate a single user from a record's field.
+	// On updates, also invalidates the old user if the field value changed.
 	invalidateUserField := func(e *core.RecordEvent, field string) error {
 		cache.InvalidateUser(e.Record.GetString(field))
+		if orig := e.Record.Original(); orig != nil {
+			if oldVal := orig.GetString(field); oldVal != "" && oldVal != e.Record.GetString(field) {
+				cache.InvalidateUser(oldVal)
+			}
+		}
 		return e.Next()
 	}
 
+	// Helper: find all users related to a field value and invalidate them.
+	invalidateUsersForFieldValue := func(collection, field, value string) {
+		if value == "" {
+			return
+		}
+		records, err := app.FindRecordsByFilter(collection, field+" = {:val}", "", 0, 0, dbx.Params{"val": value})
+		if err != nil {
+			app.Logger().Error("cache invalidation query failed", "collection", collection, "field", field, "error", err)
+			return
+		}
+		ids := make([]string, len(records))
+		for i, r := range records {
+			ids[i] = r.GetString("user")
+		}
+		cache.InvalidateUsers(ids)
+	}
+
 	// Helper: find all users in a group and invalidate them.
+	// On updates, also handles the old group if it changed.
 	invalidateGroupUsers := func(e *core.RecordEvent) error {
-		groupID := e.Record.GetString("group")
-		records, err := app.FindRecordsByFilter("iam_group_users", "group = {:gid}", "", 0, 0, dbx.Params{"gid": groupID})
-		if err == nil {
-			ids := make([]string, len(records))
-			for i, r := range records {
-				ids[i] = r.GetString("user")
+		invalidateUsersForFieldValue("iam_group_users", "group", e.Record.GetString("group"))
+		if orig := e.Record.Original(); orig != nil {
+			if oldVal := orig.GetString("group"); oldVal != "" && oldVal != e.Record.GetString("group") {
+				invalidateUsersForFieldValue("iam_group_users", "group", oldVal)
 			}
-			cache.InvalidateUsers(ids)
 		}
 		return e.Next()
 	}
 
 	// Helper: find all users with a role and invalidate them.
+	// On updates, also handles the old role if it changed.
 	invalidateRoleUsers := func(e *core.RecordEvent) error {
-		roleID := e.Record.GetString("role")
-		records, err := app.FindRecordsByFilter("iam_user_roles", "role = {:rid}", "", 0, 0, dbx.Params{"rid": roleID})
-		if err == nil {
-			ids := make([]string, len(records))
-			for i, r := range records {
-				ids[i] = r.GetString("user")
+		invalidateUsersForFieldValue("iam_user_roles", "role", e.Record.GetString("role"))
+		if orig := e.Record.Original(); orig != nil {
+			if oldVal := orig.GetString("role"); oldVal != "" && oldVal != e.Record.GetString("role") {
+				invalidateUsersForFieldValue("iam_user_roles", "role", oldVal)
 			}
-			cache.InvalidateUsers(ids)
 		}
 		return e.Next()
 	}
@@ -211,7 +232,9 @@ func registerCacheInvalidationHooks(app core.App, cache *PolicyCache) {
 
 		// 1. Direct user-policy assignments
 		userPolicies, err := app.FindRecordsByFilter("iam_user_policies", "policy = {:pid}", "", 0, 0, dbx.Params{"pid": policyID})
-		if err == nil {
+		if err != nil {
+			app.Logger().Error("cache invalidation: failed to find user-policy assignments", "policy", policyID, "error", err)
+		} else {
 			for _, r := range userPolicies {
 				seen[r.GetString("user")] = struct{}{}
 			}
@@ -219,10 +242,14 @@ func registerCacheInvalidationHooks(app core.App, cache *PolicyCache) {
 
 		// 2. Group-policy → group-users
 		groupPolicies, err := app.FindRecordsByFilter("iam_group_policies", "policy = {:pid}", "", 0, 0, dbx.Params{"pid": policyID})
-		if err == nil {
+		if err != nil {
+			app.Logger().Error("cache invalidation: failed to find group-policy assignments", "policy", policyID, "error", err)
+		} else {
 			for _, gp := range groupPolicies {
 				groupUsers, err := app.FindRecordsByFilter("iam_group_users", "group = {:gid}", "", 0, 0, dbx.Params{"gid": gp.GetString("group")})
-				if err == nil {
+				if err != nil {
+					app.Logger().Error("cache invalidation: failed to find group users", "group", gp.GetString("group"), "error", err)
+				} else {
 					for _, gu := range groupUsers {
 						seen[gu.GetString("user")] = struct{}{}
 					}
@@ -232,10 +259,14 @@ func registerCacheInvalidationHooks(app core.App, cache *PolicyCache) {
 
 		// 3. Role-policy → user-roles
 		rolePolicies, err := app.FindRecordsByFilter("iam_role_policies", "policy = {:pid}", "", 0, 0, dbx.Params{"pid": policyID})
-		if err == nil {
+		if err != nil {
+			app.Logger().Error("cache invalidation: failed to find role-policy assignments", "policy", policyID, "error", err)
+		} else {
 			for _, rp := range rolePolicies {
 				userRoles, err := app.FindRecordsByFilter("iam_user_roles", "role = {:rid}", "", 0, 0, dbx.Params{"rid": rp.GetString("role")})
-				if err == nil {
+				if err != nil {
+					app.Logger().Error("cache invalidation: failed to find role users", "role", rp.GetString("role"), "error", err)
+				} else {
 					for _, ur := range userRoles {
 						seen[ur.GetString("user")] = struct{}{}
 					}
@@ -259,6 +290,15 @@ func registerCacheInvalidationHooks(app core.App, cache *PolicyCache) {
 // registerManagedCollectionHooks syncs PocketBase collection rules when collections
 // are added to or removed from iam_managed_collections.
 func registerManagedCollectionHooks(app core.App, cache *PolicyCache) {
+	// Guard: prevent IAM system collections from being managed (self-lock prevention).
+	app.OnRecordCreateRequest("iam_managed_collections").BindFunc(func(e *core.RecordRequestEvent) error {
+		name := e.Record.GetString("collection_name")
+		if strings.HasPrefix(name, "iam_") {
+			return e.BadRequestError("cannot manage IAM system collections", nil)
+		}
+		return e.Next()
+	})
+
 	app.OnRecordAfterCreateSuccess("iam_managed_collections").BindFunc(func(e *core.RecordEvent) error {
 		name := e.Record.GetString("collection_name")
 		if err := setCollectionRulesOpen(app, name); err != nil {

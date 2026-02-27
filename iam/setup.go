@@ -1,6 +1,7 @@
 package iam
 
 import (
+	"fmt"
 	"sync"
 
 	"github.com/pocketbase/pocketbase/core"
@@ -42,6 +43,12 @@ func RegisterHooks(app core.App) {
 		}
 		return se.Next()
 	})
+
+	// Graceful shutdown: stop cache cleanup goroutines.
+	app.OnTerminate().BindFunc(func(e *core.TerminateEvent) error {
+		cache.Stop()
+		return e.Next()
+	})
 }
 
 // SyncManagedCollectionRules reads all iam_managed_collections and sets
@@ -49,7 +56,7 @@ func RegisterHooks(app core.App) {
 func SyncManagedCollectionRules(app core.App) error {
 	records, err := app.FindRecordsByFilter("iam_managed_collections", "", "", 0, 0)
 	if err != nil {
-		return nil // no records or collection doesn't exist yet
+		return fmt.Errorf("failed to query managed collections: %w", err)
 	}
 	for _, r := range records {
 		name := r.GetString("collection_name")

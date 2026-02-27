@@ -169,6 +169,9 @@ func collectStatements(app core.App, userID string) ([]Statement, error) {
 // buildInFilter constructs a parameterized PocketBase filter for matching
 // multiple values on a field. e.g. "field = {:p0} || field = {:p1}"
 func buildInFilter(field string, ids []string) (string, dbx.Params) {
+	if len(ids) == 0 {
+		return "1=0", dbx.Params{} // match nothing
+	}
 	params := dbx.Params{}
 	parts := make([]string, len(ids))
 	for i, id := range ids {

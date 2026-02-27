@@ -72,6 +72,11 @@ func ValidatePolicy(doc *PolicyDocument) error {
 		if len(s.Resource) == 0 {
 			return fmt.Errorf("statement[%d]: resource must be a non-empty array", i)
 		}
+		for j, r := range s.Resource {
+			if r == "" {
+				return fmt.Errorf("statement[%d]: resource[%d] must not be empty", i, j)
+			}
+		}
 	}
 
 	return nil
