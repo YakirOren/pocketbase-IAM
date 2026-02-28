@@ -12,6 +12,7 @@ import {
 } from "lucide-react";
 import { cn } from "@/lib/utils";
 import { Separator } from "@/components/ui/separator";
+import { Avatar, AvatarFallback } from "@/components/ui/avatar";
 import {
   DropdownMenu,
   DropdownMenuContent,
@@ -66,8 +67,13 @@ export function Sidebar() {
         <Separator className="my-3" />
         {toolItems.map(renderItem)}
       </nav>
-      <div className="flex items-center justify-between border-t px-4 py-3">
-        <span className="truncate text-sm text-muted-foreground">
+      <div className="flex items-center gap-3 border-t px-4 py-3">
+        <Avatar className="h-8 w-8">
+          <AvatarFallback className="text-xs">
+            {identity?.email?.charAt(0).toUpperCase() ?? "?"}
+          </AvatarFallback>
+        </Avatar>
+        <span className="min-w-0 flex-1 truncate text-sm text-muted-foreground">
           {identity?.email ?? ""}
         </span>
         <DropdownMenu>
@@ -77,7 +83,7 @@ export function Sidebar() {
             </button>
           </DropdownMenuTrigger>
           <DropdownMenuContent side="top" align="end">
-            <DropdownMenuItem onClick={() => logout()}>
+            <DropdownMenuItem onClick={() => logout()} className="text-destructive focus:text-destructive">
               <LogOut className="mr-2 h-4 w-4" />
               Logout
             </DropdownMenuItem>
