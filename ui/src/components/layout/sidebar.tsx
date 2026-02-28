@@ -1,4 +1,5 @@
 import { Link, useLocation } from "react-router";
+import { useGetIdentity, useLogout } from "@refinedev/core";
 import {
   Shield,
   UserCheck,
@@ -6,9 +7,17 @@ import {
   Contact,
   Database,
   FlaskConical,
+  EllipsisVertical,
+  LogOut,
 } from "lucide-react";
 import { cn } from "@/lib/utils";
 import { Separator } from "@/components/ui/separator";
+import {
+  DropdownMenu,
+  DropdownMenuContent,
+  DropdownMenuItem,
+  DropdownMenuTrigger,
+} from "@/components/ui/dropdown-menu";
 
 const navItems = [
   { label: "Policies", path: "/policies", icon: Shield },
@@ -24,6 +33,8 @@ const toolItems = [
 
 export function Sidebar() {
   const location = useLocation();
+  const { data: identity } = useGetIdentity<{ email?: string }>();
+  const { mutate: logout } = useLogout();
 
   const renderItem = (item: (typeof navItems)[0]) => {
     const isActive = location.pathname.startsWith(item.path);
@@ -55,6 +66,24 @@ export function Sidebar() {
         <Separator className="my-3" />
         {toolItems.map(renderItem)}
       </nav>
+      <div className="flex items-center justify-between border-t px-4 py-3">
+        <span className="truncate text-sm text-muted-foreground">
+          {identity?.email ?? ""}
+        </span>
+        <DropdownMenu>
+          <DropdownMenuTrigger asChild>
+            <button className="rounded p-1 hover:bg-accent">
+              <EllipsisVertical className="h-4 w-4 text-muted-foreground" />
+            </button>
+          </DropdownMenuTrigger>
+          <DropdownMenuContent side="top" align="end">
+            <DropdownMenuItem onClick={() => logout()}>
+              <LogOut className="mr-2 h-4 w-4" />
+              Logout
+            </DropdownMenuItem>
+          </DropdownMenuContent>
+        </DropdownMenu>
+      </div>
     </aside>
   );
 }
