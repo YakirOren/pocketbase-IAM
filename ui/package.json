@@ -10,6 +10,14 @@
     "preview": "vite preview"
   },
   "dependencies": {
+    "@codemirror/autocomplete": "^6.20.0",
+    "@codemirror/commands": "^6.10.2",
+    "@codemirror/lang-json": "^6.0.2",
+    "@codemirror/language": "^6.12.2",
+    "@codemirror/lint": "^6.9.4",
+    "@codemirror/search": "^6.6.0",
+    "@codemirror/state": "^6.5.4",
+    "@codemirror/view": "^6.39.15",
     "@hookform/resolvers": "^5.2.2",
     "@refinedev/core": "^5.0.9",
     "@refinedev/react-hook-form": "^5.0.4",
@@ -18,6 +26,7 @@
     "@tailwindcss/vite": "^4.2.1",
     "class-variance-authority": "^0.7.1",
     "clsx": "^2.1.1",
+    "codemirror": "^6.0.2",
     "lucide-react": "^0.575.0",
     "pocketbase": "^0.26.8",
     "radix-ui": "^1.4.3",
