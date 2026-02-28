@@ -1,2 +1,5 @@
 pb_data/
+pb_public/
 .idea/
+ui/node_modules/
+ui/dist/
