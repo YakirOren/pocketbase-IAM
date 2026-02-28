@@ -16,6 +16,7 @@ import { RoleList, RoleCreate, RoleEdit, RoleShow } from "@/pages/roles";
 import { GroupList, GroupCreate, GroupEdit, GroupShow } from "@/pages/groups";
 import { UserList, UserShow } from "@/pages/users";
 import { ManagedCollectionList } from "@/pages/managed-collections";
+import { Simulator } from "@/pages/simulator";
 
 function App() {
   return (
@@ -113,7 +114,7 @@ function App() {
               <Route index element={<ManagedCollectionList />} />
             </Route>
 
-            <Route path="/simulator" element={<div>Policy Simulator (TODO)</div>} />
+            <Route path="/simulator" element={<Simulator />} />
 
             <Route path="*" element={<div>Page not found</div>} />
           </Route>
