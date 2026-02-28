@@ -1,6 +1,8 @@
 package iam
 
 import (
+	"net/http"
+
 	"github.com/pocketbase/pocketbase/apis"
 	"github.com/pocketbase/pocketbase/core"
 )
@@ -45,8 +47,42 @@ func registerRoutes(app core.App, cache *PolicyCache) {
 				)
 			}
 
-			return e.JSON(200, map[string]any{"allowed": allowed})
+			return e.JSON(http.StatusOK, map[string]any{"allowed": allowed})
 		}).Bind(apis.RequireAuth())
+
+		// POST /api/iam/simulate (superuser-only) — verbose evaluation with trace
+		se.Router.POST("/api/iam/simulate", func(e *core.RequestEvent) error {
+			var body struct {
+				UserID   string `json:"user_id"`
+				Action   string `json:"action"`
+				Resource string `json:"resource"`
+			}
+			if err := e.BindBody(&body); err != nil {
+				return e.BadRequestError("invalid request body", err)
+			}
+			if body.UserID == "" {
+				return e.BadRequestError("user_id is required", nil)
+			}
+			if body.Action == "" {
+				return e.BadRequestError("action is required", nil)
+			}
+			if body.Resource == "" {
+				body.Resource = "*"
+			}
+
+			result, err := EvaluateVerbose(app, cache, body.UserID, body.Action, body.Resource)
+			if err != nil {
+				app.Logger().Error("IAM simulate error",
+					"user", body.UserID,
+					"action", body.Action,
+					"resource", body.Resource,
+					"error", err,
+				)
+				return e.InternalServerError("internal error", nil)
+			}
+
+			return e.JSON(http.StatusOK, result)
+		}).Bind(apis.RequireSuperuserAuth())
 
 		return se.Next()
 	})
