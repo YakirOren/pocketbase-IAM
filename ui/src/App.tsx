@@ -12,6 +12,10 @@ import { ThemeProvider } from "@/components/refine-ui/theme/theme-provider";
 import { Layout } from "@/components/layout";
 import { LoginPage } from "@/pages/login";
 import { PolicyList, PolicyCreate, PolicyEdit } from "@/pages/policies";
+import { RoleList, RoleCreate, RoleEdit, RoleShow } from "@/pages/roles";
+import { GroupList, GroupCreate, GroupEdit, GroupShow } from "@/pages/groups";
+import { UserList, UserShow } from "@/pages/users";
+import { ManagedCollectionList } from "@/pages/managed-collections";
 
 function App() {
   return (
@@ -87,26 +91,26 @@ function App() {
             </Route>
 
             <Route path="/roles">
-              <Route index element={<div>Roles list (TODO)</div>} />
-              <Route path="create" element={<div>Create role (TODO)</div>} />
-              <Route path="edit/:id" element={<div>Edit role (TODO)</div>} />
-              <Route path="show/:id" element={<div>Show role (TODO)</div>} />
+              <Route index element={<RoleList />} />
+              <Route path="create" element={<RoleCreate />} />
+              <Route path="edit/:id" element={<RoleEdit />} />
+              <Route path="show/:id" element={<RoleShow />} />
             </Route>
 
             <Route path="/groups">
-              <Route index element={<div>Groups list (TODO)</div>} />
-              <Route path="create" element={<div>Create group (TODO)</div>} />
-              <Route path="edit/:id" element={<div>Edit group (TODO)</div>} />
-              <Route path="show/:id" element={<div>Show group (TODO)</div>} />
+              <Route index element={<GroupList />} />
+              <Route path="create" element={<GroupCreate />} />
+              <Route path="edit/:id" element={<GroupEdit />} />
+              <Route path="show/:id" element={<GroupShow />} />
             </Route>
 
             <Route path="/users">
-              <Route index element={<div>Users list (TODO)</div>} />
-              <Route path="show/:id" element={<div>User summary (TODO)</div>} />
+              <Route index element={<UserList />} />
+              <Route path="show/:id" element={<UserShow />} />
             </Route>
 
             <Route path="/managed-collections">
-              <Route index element={<div>Managed collections (TODO)</div>} />
+              <Route index element={<ManagedCollectionList />} />
             </Route>
 
             <Route path="/simulator" element={<div>Policy Simulator (TODO)</div>} />
