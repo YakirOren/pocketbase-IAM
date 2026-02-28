@@ -11,6 +11,7 @@ import { pbDataProvider, pbAuthProvider, pbLiveProvider } from "@/providers/pock
 import { ThemeProvider } from "@/components/refine-ui/theme/theme-provider";
 import { Layout } from "@/components/layout";
 import { LoginPage } from "@/pages/login";
+import { PolicyList, PolicyCreate, PolicyEdit } from "@/pages/policies";
 
 function App() {
   return (
@@ -79,10 +80,10 @@ function App() {
             <Route index element={<NavigateToResource resource="iam_policies" />} />
 
             <Route path="/policies">
-              <Route index element={<div>Policies list (TODO)</div>} />
-              <Route path="create" element={<div>Create policy (TODO)</div>} />
-              <Route path="edit/:id" element={<div>Edit policy (TODO)</div>} />
-              <Route path="show/:id" element={<div>Show policy (TODO)</div>} />
+              <Route index element={<PolicyList />} />
+              <Route path="create" element={<PolicyCreate />} />
+              <Route path="edit/:id" element={<PolicyEdit />} />
+              <Route path="show/:id" element={<PolicyEdit />} />
             </Route>
 
             <Route path="/roles">
