@@ -1,3 +1,4 @@
+import { useState } from "react";
 import { useTable } from "@refinedev/react-table";
 import { useNavigation, useDelete } from "@refinedev/core";
 import {
@@ -14,6 +15,16 @@ import {
   TableRow,
 } from "@/components/ui/table";
 import { Button } from "@/components/ui/button";
+import {
+  AlertDialog,
+  AlertDialogAction,
+  AlertDialogCancel,
+  AlertDialogContent,
+  AlertDialogDescription,
+  AlertDialogFooter,
+  AlertDialogHeader,
+  AlertDialogTitle,
+} from "@/components/ui/alert-dialog";
 import { Eye, Pencil, Trash2 } from "lucide-react";
 
 interface IRole {
@@ -25,6 +36,7 @@ interface IRole {
 export function RoleList() {
   const { create, show, edit } = useNavigation();
   const { mutate: deleteRecord } = useDelete();
+  const [deleteTarget, setDeleteTarget] = useState<{ id: string; name: string } | null>(null);
 
   const columns: ColumnDef<IRole>[] = [
     { accessorKey: "name", header: "Name" },
@@ -58,9 +70,7 @@ export function RoleList() {
           <Button
             variant="ghost"
             size="sm"
-            onClick={() =>
-              deleteRecord({ resource: "iam_roles", id: row.original.id })
-            }
+            onClick={() => setDeleteTarget({ id: row.original.id, name: row.original.name })}
           >
             <Trash2 className="h-4 w-4" />
           </Button>
@@ -121,6 +131,30 @@ export function RoleList() {
         <Button variant="outline" size="sm" onClick={() => table.previousPage()} disabled={!table.getCanPreviousPage()}>Previous</Button>
         <Button variant="outline" size="sm" onClick={() => table.nextPage()} disabled={!table.getCanNextPage()}>Next</Button>
       </div>
+      <AlertDialog open={!!deleteTarget} onOpenChange={() => setDeleteTarget(null)}>
+        <AlertDialogContent>
+          <AlertDialogHeader>
+            <AlertDialogTitle>Delete Role</AlertDialogTitle>
+            <AlertDialogDescription>
+              Are you sure you want to delete "{deleteTarget?.name}"? This action cannot be undone.
+            </AlertDialogDescription>
+          </AlertDialogHeader>
+          <AlertDialogFooter>
+            <AlertDialogCancel>Cancel</AlertDialogCancel>
+            <AlertDialogAction
+              variant="destructive"
+              onClick={() => {
+                if (deleteTarget) {
+                  deleteRecord({ resource: "iam_roles", id: deleteTarget.id });
+                  setDeleteTarget(null);
+                }
+              }}
+            >
+              Delete
+            </AlertDialogAction>
+          </AlertDialogFooter>
+        </AlertDialogContent>
+      </AlertDialog>
     </div>
   );
 }

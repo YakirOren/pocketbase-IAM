@@ -1,15 +1,29 @@
 import { useShow, useList, useCreate, useDelete } from "@refinedev/core";
-import { useParams, Link } from "react-router";
+import { useParams, Link, useNavigate } from "react-router";
 import { Separator } from "@/components/ui/separator";
 import { Button } from "@/components/ui/button";
-import { FlaskConical } from "lucide-react";
+import { ArrowLeft, FlaskConical } from "lucide-react";
 import { EntityChipList } from "@/components/entity-chip-list";
 import { EffectivePermissionsTable } from "@/components/effective-permissions-table";
 import { computeEffectivePermissions } from "@/lib/permissions";
 import type { PolicyDocument } from "@/types/policy";
 
+interface AttachedPolicy {
+  id: string;
+  entityId: string;
+  label: string;
+  document: PolicyDocument | undefined;
+}
+
+interface AttachedEntity {
+  id: string;
+  entityId: string;
+  label: string;
+}
+
 export function UserShow() {
   const { id } = useParams();
+  const navigate = useNavigate();
   const { query } = useShow({ resource: "users", id });
   const user = query?.data?.data;
 
@@ -17,12 +31,12 @@ export function UserShow() {
   const { mutate: deleteJoin } = useDelete();
 
   // User's roles
-  const { data: userRoles } = useList({
+  const { result: userRolesResult } = useList({
     resource: "iam_user_roles",
     filters: [{ field: "user", operator: "eq", value: id }],
     meta: { expand: ["role"] },
   });
-  const roles = (userRoles?.data ?? []).map((r: Record<string, unknown>) => {
+  const roles: AttachedEntity[] = (userRolesResult.data ?? []).map((r: Record<string, unknown>) => {
     const expand = r.expand as { role?: { name?: string } } | undefined;
     return {
       id: r.id as string,
@@ -32,12 +46,12 @@ export function UserShow() {
   });
 
   // User's groups
-  const { data: groupUsers } = useList({
+  const { result: groupUsersResult } = useList({
     resource: "iam_group_users",
     filters: [{ field: "user", operator: "eq", value: id }],
     meta: { expand: ["group"] },
   });
-  const groups = (groupUsers?.data ?? []).map((r: Record<string, unknown>) => {
+  const groups: AttachedEntity[] = (groupUsersResult.data ?? []).map((r: Record<string, unknown>) => {
     const expand = r.expand as { group?: { name?: string } } | undefined;
     return {
       id: r.id as string,
@@ -47,12 +61,12 @@ export function UserShow() {
   });
 
   // User's direct policies
-  const { data: userPolicies } = useList({
+  const { result: userPoliciesResult } = useList({
     resource: "iam_user_policies",
     filters: [{ field: "user", operator: "eq", value: id }],
     meta: { expand: ["policy"] },
   });
-  const directPolicies = (userPolicies?.data ?? []).map((r: Record<string, unknown>) => {
+  const directPolicies: AttachedPolicy[] = (userPoliciesResult.data ?? []).map((r: Record<string, unknown>) => {
     const expand = r.expand as { policy?: { name?: string; document?: PolicyDocument } } | undefined;
     return {
       id: r.id as string,
@@ -64,7 +78,7 @@ export function UserShow() {
 
   // Role policies (for effective permissions)
   const roleIds = roles.map((r) => r.entityId);
-  const { data: rolePoliciesData } = useList({
+  const { result: rolePoliciesResult } = useList({
     resource: "iam_role_policies",
     filters: roleIds.length
       ? [{ field: "role", operator: "in", value: roleIds }]
@@ -76,7 +90,7 @@ export function UserShow() {
 
   // Group policies (for effective permissions)
   const groupIds = groups.map((g) => g.entityId);
-  const { data: groupPoliciesData } = useList({
+  const { result: groupPoliciesResult } = useList({
     resource: "iam_group_policies",
     filters: groupIds.length
       ? [{ field: "group", operator: "in", value: groupIds }]
@@ -95,7 +109,7 @@ export function UserShow() {
         document: p.document!,
         source: `Direct: ${p.label}`,
       })),
-    ...(rolePoliciesData?.data ?? [])
+    ...(rolePoliciesResult.data ?? [])
       .filter((r: Record<string, unknown>) => {
         const expand = r.expand as { policy?: { document?: unknown } } | undefined;
         return expand?.policy?.document;
@@ -108,7 +122,7 @@ export function UserShow() {
           source: `Role: ${expand?.role?.name ?? r.role}`,
         };
       }),
-    ...(groupPoliciesData?.data ?? [])
+    ...(groupPoliciesResult.data ?? [])
       .filter((r: Record<string, unknown>) => {
         const expand = r.expand as { policy?: { document?: unknown } } | undefined;
         return expand?.policy?.document;
@@ -129,6 +143,9 @@ export function UserShow() {
 
   return (
     <div className="max-w-3xl space-y-6">
+      <Button variant="ghost" size="sm" onClick={() => navigate(-1)}>
+        <ArrowLeft className="mr-1 h-4 w-4" /> Back
+      </Button>
       <div className="flex items-center justify-between">
         <h1 className="text-2xl font-bold">{user?.email as string}</h1>
         <Button variant="outline" asChild>

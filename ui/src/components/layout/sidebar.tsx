@@ -1,5 +1,6 @@
 import { Link, useLocation } from "react-router";
 import { useGetIdentity, useLogout } from "@refinedev/core";
+import { useTheme } from "next-themes";
 import {
   Shield,
   UserCheck,
@@ -9,9 +10,12 @@ import {
   FlaskConical,
   EllipsisVertical,
   LogOut,
+  Sun,
+  Moon,
 } from "lucide-react";
 import { cn } from "@/lib/utils";
 import { Separator } from "@/components/ui/separator";
+import { Switch } from "@/components/ui/switch";
 import { Avatar, AvatarFallback } from "@/components/ui/avatar";
 import {
   DropdownMenu,
@@ -36,6 +40,8 @@ export function Sidebar() {
   const location = useLocation();
   const { data: identity } = useGetIdentity<{ email?: string }>();
   const { mutate: logout } = useLogout();
+  const { theme, setTheme } = useTheme();
+  const isDark = theme === "dark";
 
   const renderItem = (item: (typeof navItems)[0]) => {
     const isActive = location.pathname.startsWith(item.path);
@@ -67,6 +73,13 @@ export function Sidebar() {
         <Separator className="my-3" />
         {toolItems.map(renderItem)}
       </nav>
+      <div className="flex items-center justify-between border-t px-4 py-3">
+        <div className="flex items-center gap-2 text-muted-foreground">
+          <Sun className="h-4 w-4" />
+          <Switch checked={isDark} onCheckedChange={(checked) => setTheme(checked ? "dark" : "light")} />
+          <Moon className="h-4 w-4" />
+        </div>
+      </div>
       <div className="flex items-center gap-3 border-t px-4 py-3">
         <Avatar className="h-8 w-8">
           <AvatarFallback className="text-xs">

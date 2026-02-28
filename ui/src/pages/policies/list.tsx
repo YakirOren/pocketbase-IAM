@@ -1,3 +1,4 @@
+import { useState } from "react";
 import { useTable } from "@refinedev/react-table";
 import { useNavigation, useDelete } from "@refinedev/core";
 import {
@@ -14,6 +15,16 @@ import {
   TableRow,
 } from "@/components/ui/table";
 import { Button } from "@/components/ui/button";
+import {
+  AlertDialog,
+  AlertDialogAction,
+  AlertDialogCancel,
+  AlertDialogContent,
+  AlertDialogDescription,
+  AlertDialogFooter,
+  AlertDialogHeader,
+  AlertDialogTitle,
+} from "@/components/ui/alert-dialog";
 import { Pencil, Trash2 } from "lucide-react";
 
 interface IPolicy {
@@ -26,6 +37,7 @@ interface IPolicy {
 export function PolicyList() {
   const { create, edit } = useNavigation();
   const { mutate: deleteRecord } = useDelete();
+  const [deleteTarget, setDeleteTarget] = useState<{ id: string; name: string } | null>(null);
 
   const columns: ColumnDef<IPolicy>[] = [
     { accessorKey: "name", header: "Name" },
@@ -60,12 +72,7 @@ export function PolicyList() {
           <Button
             variant="ghost"
             size="sm"
-            onClick={() =>
-              deleteRecord({
-                resource: "iam_policies",
-                id: row.original.id,
-              })
-            }
+            onClick={() => setDeleteTarget({ id: row.original.id, name: row.original.name })}
           >
             <Trash2 className="h-4 w-4" />
           </Button>
@@ -142,6 +149,30 @@ export function PolicyList() {
           Next
         </Button>
       </div>
+      <AlertDialog open={!!deleteTarget} onOpenChange={() => setDeleteTarget(null)}>
+        <AlertDialogContent>
+          <AlertDialogHeader>
+            <AlertDialogTitle>Delete Policy</AlertDialogTitle>
+            <AlertDialogDescription>
+              Are you sure you want to delete "{deleteTarget?.name}"? This action cannot be undone.
+            </AlertDialogDescription>
+          </AlertDialogHeader>
+          <AlertDialogFooter>
+            <AlertDialogCancel>Cancel</AlertDialogCancel>
+            <AlertDialogAction
+              variant="destructive"
+              onClick={() => {
+                if (deleteTarget) {
+                  deleteRecord({ resource: "iam_policies", id: deleteTarget.id });
+                  setDeleteTarget(null);
+                }
+              }}
+            >
+              Delete
+            </AlertDialogAction>
+          </AlertDialogFooter>
+        </AlertDialogContent>
+      </AlertDialog>
     </div>
   );
 }

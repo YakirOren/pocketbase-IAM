@@ -34,19 +34,19 @@ export function Simulator() {
   const [result, setResult] = useState<SimulateResult | null>(null);
 
   // Fetch users for dropdown
-  const { data: usersData } = useList({
+  const { result: usersResult } = useList({
     resource: "users",
     pagination: { pageSize: 100 },
   });
 
   // Fetch policies to extract action suggestions
-  const { data: policiesData } = useList({
+  const { result: policiesResult } = useList({
     resource: "iam_policies",
     pagination: { pageSize: 100 },
   });
   const actionSuggestions = Array.from(
     new Set(
-      (policiesData?.data ?? []).flatMap((p: Record<string, unknown>) => {
+      (policiesResult.data ?? []).flatMap((p: Record<string, unknown>) => {
         const doc = p.document as { statement?: { action?: string[] }[] } | undefined;
         return (doc?.statement ?? []).flatMap((s) => s.action ?? []);
       })
@@ -85,7 +85,7 @@ export function Simulator() {
               <SelectValue placeholder="Select user..." />
             </SelectTrigger>
             <SelectContent>
-              {(usersData?.data ?? []).map((u) => (
+              {(usersResult.data ?? []).map((u: Record<string, unknown>) => (
                 <SelectItem key={u.id as string} value={u.id as string}>
                   {u.email as string}
                 </SelectItem>

@@ -7,6 +7,6 @@ const pb = new PocketBase("/");
 export const pbClient = pb;
 export const pbDataProvider = dataProvider(pb);
 export const pbAuthProvider = authProvider(pb, {
-  collection: "users",
+  collection: "_superusers",
 });
 export const pbLiveProvider = liveProvider(pb);

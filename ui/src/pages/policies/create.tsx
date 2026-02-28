@@ -1,5 +1,7 @@
 import { useState } from "react";
+import { useNavigate } from "react-router";
 import { useForm } from "@refinedev/react-hook-form";
+import { ArrowLeft } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
@@ -28,8 +30,13 @@ export function PolicyCreate() {
     onFinish({ ...data, document: policyDoc });
   };
 
+  const navigate = useNavigate();
+
   return (
     <div className="max-w-3xl">
+      <Button variant="ghost" size="sm" className="mb-4" onClick={() => navigate(-1)}>
+        <ArrowLeft className="mr-1 h-4 w-4" /> Back
+      </Button>
       <h1 className="mb-6 text-2xl font-bold">Create Policy</h1>
       <form onSubmit={handleSubmit(onSubmit)} className="space-y-6">
         <div className="space-y-2">

@@ -1,7 +1,8 @@
 import { useState, useEffect } from "react";
 import { useForm } from "@refinedev/react-hook-form";
 import { useList, useCreate, useDelete } from "@refinedev/core";
-import { useParams } from "react-router";
+import { useParams, useNavigate } from "react-router";
+import { ArrowLeft } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
@@ -44,43 +45,48 @@ export function PolicyEdit() {
   const { mutate: deleteJoin } = useDelete();
 
   // Users attached via iam_user_policies
-  const { data: userPolicies } = useList({
+  const { result: userPoliciesResult } = useList({
     resource: "iam_user_policies",
     filters: [{ field: "policy", operator: "eq", value: id }],
     meta: { expand: ["user"] },
   });
-  const attachedUsers = (userPolicies?.data ?? []).map((r: Record<string, unknown>) => ({
+  const attachedUsers = (userPoliciesResult.data ?? []).map((r: Record<string, unknown>) => ({
     id: r.id as string,
     entityId: r.user as string,
     label: ((r as Record<string, unknown> & { expand?: { user?: { email?: string } } }).expand?.user?.email ?? r.user) as string,
   }));
 
   // Roles attached via iam_role_policies
-  const { data: rolePolicies } = useList({
+  const { result: rolePoliciesResult } = useList({
     resource: "iam_role_policies",
     filters: [{ field: "policy", operator: "eq", value: id }],
     meta: { expand: ["role"] },
   });
-  const attachedRoles = (rolePolicies?.data ?? []).map((r: Record<string, unknown>) => ({
+  const attachedRoles = (rolePoliciesResult.data ?? []).map((r: Record<string, unknown>) => ({
     id: r.id as string,
     entityId: r.role as string,
     label: ((r as Record<string, unknown> & { expand?: { role?: { name?: string } } }).expand?.role?.name ?? r.role) as string,
   }));
 
   // Groups attached via iam_group_policies
-  const { data: groupPolicies } = useList({
+  const { result: groupPoliciesResult } = useList({
     resource: "iam_group_policies",
     filters: [{ field: "policy", operator: "eq", value: id }],
     meta: { expand: ["group"] },
   });
-  const attachedGroups = (groupPolicies?.data ?? []).map((r: Record<string, unknown>) => ({
+  const attachedGroups = (groupPoliciesResult.data ?? []).map((r: Record<string, unknown>) => ({
     id: r.id as string,
     entityId: r.group as string,
     label: ((r as Record<string, unknown> & { expand?: { group?: { name?: string } } }).expand?.group?.name ?? r.group) as string,
   }));
 
+  const navigate = useNavigate();
+
   return (
     <div className="max-w-3xl">
+      <Button variant="ghost" size="sm" className="mb-4" onClick={() => navigate(-1)}>
+        <ArrowLeft className="mr-1 h-4 w-4" /> Back
+      </Button>
       <h1 className="mb-6 text-2xl font-bold">Edit Policy</h1>
       {query?.isLoading ? (
         <p>Loading...</p>
@@ -122,7 +128,7 @@ export function PolicyEdit() {
 
             <EntityChipList
               title="Direct Users"
-              items={attachedUsers.map((u) => ({ id: u.id, label: u.label }))}
+              items={attachedUsers.map((u: { id: string; entityId: string; label: string }) => ({ id: u.id, label: u.label }))}
               resource="users"
               labelField="email"
               addLabel="Attach User"
@@ -139,7 +145,7 @@ export function PolicyEdit() {
 
             <EntityChipList
               title="Roles"
-              items={attachedRoles.map((r) => ({ id: r.id, label: r.label }))}
+              items={attachedRoles.map((r: { id: string; entityId: string; label: string }) => ({ id: r.id, label: r.label }))}
               resource="iam_roles"
               labelField="name"
               addLabel="Attach to Role"
@@ -156,7 +162,7 @@ export function PolicyEdit() {
 
             <EntityChipList
               title="Groups"
-              items={attachedGroups.map((g) => ({ id: g.id, label: g.label }))}
+              items={attachedGroups.map((g: { id: string; entityId: string; label: string }) => ({ id: g.id, label: g.label }))}
               resource="iam_groups"
               labelField="name"
               addLabel="Attach to Group"

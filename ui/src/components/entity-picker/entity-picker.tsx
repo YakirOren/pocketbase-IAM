@@ -37,7 +37,7 @@ export function EntityPicker({
   const [open, setOpen] = useState(false);
   const [search, setSearch] = useState("");
 
-  const { data, isLoading } = useList({
+  const { query, result } = useList({
     resource,
     filters: search
       ? [{ field: labelField, operator: "contains", value: search }]
@@ -46,8 +46,8 @@ export function EntityPicker({
     queryOptions: { enabled: open },
   });
 
-  const records = (data?.data ?? []).filter(
-    (r) => !excludeIds.includes(r.id as string)
+  const records = (result.data ?? []).filter(
+    (r: Record<string, unknown>) => !excludeIds.includes(r.id as string)
   );
 
   const handleSelect = (record: Record<string, unknown>) => {
@@ -75,13 +75,13 @@ export function EntityPicker({
           autoFocus
         />
         <div className="max-h-64 overflow-y-auto">
-          {isLoading ? (
+          {query.isLoading ? (
             <p className="py-4 text-center text-sm text-muted-foreground">Loading...</p>
           ) : records.length === 0 ? (
             <p className="py-4 text-center text-sm text-muted-foreground">No results</p>
           ) : (
             <ul className="space-y-1">
-              {records.map((record) => (
+              {records.map((record: Record<string, unknown>) => (
                 <li key={record.id as string}>
                   <button
                     type="button"
@@ -91,7 +91,7 @@ export function EntityPicker({
                     <span className="font-medium">
                       {record[labelField] as string}
                     </span>
-                    {secondaryField && record[secondaryField] && (
+                    {secondaryField && !!record[secondaryField] && (
                       <span className="ml-2 text-muted-foreground">
                         {record[secondaryField] as string}
                       </span>

@@ -38,20 +38,21 @@ export function ManagedCollectionList() {
     id?: string;
   } | null>(null);
 
-  const { data: managedData, isLoading } = useList<ManagedCollection>({
+  const { query: managedQuery, result: managedResult } = useList<ManagedCollection>({
     resource: "iam_managed_collections",
   });
-  const managed = managedData?.data ?? [];
+  const managed = managedResult.data ?? [];
 
-  const { data: allCollectionsData } = useCustom<PBCollection[]>({
+  const { query: collectionsQuery } = useCustom<PBCollection[]>({
     url: "/api/collections",
     method: "get",
   });
-  const allCollections: PBCollection[] = Array.isArray(allCollectionsData?.data)
-    ? allCollectionsData.data
-    : (allCollectionsData?.data as unknown as { items?: PBCollection[] })?.items ?? [];
+  const allCollectionsRaw = collectionsQuery.data?.data;
+  const allCollections: PBCollection[] = Array.isArray(allCollectionsRaw)
+    ? allCollectionsRaw
+    : (allCollectionsRaw as unknown as { items?: PBCollection[] })?.items ?? [];
 
-  const managedNames = new Set(managed.map((m) => m.collection_name));
+  const managedNames = new Set(managed.map((m: ManagedCollection) => m.collection_name));
   const available = allCollections.filter(
     (c) => !managedNames.has(c.name) && !c.name.startsWith("iam_") && c.name !== "_superusers"
   );
@@ -73,7 +74,7 @@ export function ManagedCollectionList() {
     );
   }
 
-  if (isLoading) return <p>Loading...</p>;
+  if (managedQuery.isLoading) return <p>Loading...</p>;
 
   return (
     <div className="space-y-8">
@@ -98,7 +99,7 @@ export function ManagedCollectionList() {
             </TableHeader>
             <TableBody>
               {managed.length ? (
-                managed.map((m) => (
+                managed.map((m: ManagedCollection) => (
                   <TableRow key={m.id}>
                     <TableCell className="font-mono text-sm">{m.collection_name}</TableCell>
                     <TableCell>
