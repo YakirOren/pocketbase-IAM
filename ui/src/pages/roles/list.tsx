@@ -14,20 +14,19 @@ import {
   TableRow,
 } from "@/components/ui/table";
 import { Button } from "@/components/ui/button";
-import { Pencil, Trash2 } from "lucide-react";
+import { Eye, Pencil, Trash2 } from "lucide-react";
 
-interface IPolicy {
+interface IRole {
   id: string;
   name: string;
   description: string;
-  document: { statement: unknown[] };
 }
 
-export function PolicyList() {
-  const { create, edit } = useNavigation();
+export function RoleList() {
+  const { create, show, edit } = useNavigation();
   const { mutate: deleteRecord } = useDelete();
 
-  const columns: ColumnDef<IPolicy>[] = [
+  const columns: ColumnDef<IRole>[] = [
     { accessorKey: "name", header: "Name" },
     {
       accessorKey: "description",
@@ -38,14 +37,6 @@ export function PolicyList() {
       },
     },
     {
-      id: "statements",
-      header: "Statements",
-      cell: ({ row }) => {
-        const doc = row.original.document;
-        return doc?.statement?.length ?? 0;
-      },
-    },
-    {
       id: "actions",
       header: "Actions",
       cell: ({ row }) => (
@@ -53,7 +44,14 @@ export function PolicyList() {
           <Button
             variant="ghost"
             size="sm"
-            onClick={() => edit("iam_policies", row.original.id)}
+            onClick={() => show("iam_roles", row.original.id)}
+          >
+            <Eye className="h-4 w-4" />
+          </Button>
+          <Button
+            variant="ghost"
+            size="sm"
+            onClick={() => edit("iam_roles", row.original.id)}
           >
             <Pencil className="h-4 w-4" />
           </Button>
@@ -61,10 +59,7 @@ export function PolicyList() {
             variant="ghost"
             size="sm"
             onClick={() =>
-              deleteRecord({
-                resource: "iam_policies",
-                id: row.original.id,
-              })
+              deleteRecord({ resource: "iam_roles", id: row.original.id })
             }
           >
             <Trash2 className="h-4 w-4" />
@@ -74,19 +69,18 @@ export function PolicyList() {
     },
   ];
 
-  const { reactTable: table } = useTable<IPolicy>({
+  const { reactTable: table } = useTable<IRole>({
     columns,
-    refineCoreProps: { resource: "iam_policies" },
+    refineCoreProps: { resource: "iam_roles" },
     getCoreRowModel: getCoreRowModel(),
   });
 
   return (
     <div>
       <div className="mb-4 flex items-center justify-between">
-        <h1 className="text-2xl font-bold">Policies</h1>
-        <Button onClick={() => create("iam_policies")}>Create Policy</Button>
+        <h1 className="text-2xl font-bold">Roles</h1>
+        <Button onClick={() => create("iam_roles")}>Create Role</Button>
       </div>
-
       <div className="rounded-md border">
         <Table>
           <TableHeader>
@@ -116,31 +110,16 @@ export function PolicyList() {
             ) : (
               <TableRow>
                 <TableCell colSpan={columns.length} className="h-24 text-center">
-                  No policies found.
+                  No roles found.
                 </TableCell>
               </TableRow>
             )}
           </TableBody>
         </Table>
       </div>
-
       <div className="flex items-center justify-end gap-2 py-4">
-        <Button
-          variant="outline"
-          size="sm"
-          onClick={() => table.previousPage()}
-          disabled={!table.getCanPreviousPage()}
-        >
-          Previous
-        </Button>
-        <Button
-          variant="outline"
-          size="sm"
-          onClick={() => table.nextPage()}
-          disabled={!table.getCanNextPage()}
-        >
-          Next
-        </Button>
+        <Button variant="outline" size="sm" onClick={() => table.previousPage()} disabled={!table.getCanPreviousPage()}>Previous</Button>
+        <Button variant="outline" size="sm" onClick={() => table.nextPage()} disabled={!table.getCanNextPage()}>Next</Button>
       </div>
     </div>
   );

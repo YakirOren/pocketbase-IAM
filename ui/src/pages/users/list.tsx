@@ -37,7 +37,7 @@ export function UserList() {
     },
   ];
 
-  const table = useTable<IUser>({
+  const { reactTable: table } = useTable<IUser>({
     columns,
     refineCoreProps: { resource: "users" },
     getCoreRowModel: getCoreRowModel(),
