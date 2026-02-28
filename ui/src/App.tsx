@@ -1,4 +1,4 @@
-import { Refine, Authenticated } from "@refinedev/core";
+import { Refine, Authenticated, AuthPage } from "@refinedev/core";
 import routerProvider, {
   NavigateToResource,
   CatchAllNavigate,
@@ -9,7 +9,6 @@ import { BrowserRouter, Routes, Route, Outlet } from "react-router";
 
 import { pbDataProvider, pbAuthProvider, pbLiveProvider } from "@/providers/pocketbase";
 import { Layout } from "@/components/layout";
-import { LoginPage } from "@/pages/login";
 
 function App() {
   return (
@@ -119,7 +118,7 @@ function App() {
               </Authenticated>
             }
           >
-            <Route path="/login" element={<LoginPage />} />
+            <Route path="/login" element={<AuthPage type="login" />} />
           </Route>
         </Routes>
 
