@@ -8,11 +8,13 @@ import routerProvider, {
 import { BrowserRouter, Routes, Route, Outlet } from "react-router";
 
 import { pbDataProvider, pbAuthProvider, pbLiveProvider } from "@/providers/pocketbase";
+import { ThemeProvider } from "@/components/refine-ui/theme/theme-provider";
 import { Layout } from "@/components/layout";
 import { LoginPage } from "@/pages/login";
 
 function App() {
   return (
+    <ThemeProvider>
     <BrowserRouter>
       <Refine
         routerProvider={routerProvider}
@@ -127,6 +129,7 @@ function App() {
         <DocumentTitleHandler />
       </Refine>
     </BrowserRouter>
+    </ThemeProvider>
   );
 }
 
