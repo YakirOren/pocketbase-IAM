@@ -8,6 +8,7 @@ import routerProvider, {
 import { BrowserRouter, Routes, Route, Outlet } from "react-router";
 
 import { pbDataProvider, pbAuthProvider, pbLiveProvider } from "@/providers/pocketbase";
+import { accessControlProvider } from "@/providers/access-control";
 import { ThemeProvider } from "@/components/refine-ui/theme/theme-provider";
 import { Layout } from "@/components/layout";
 import { LoginPage } from "@/pages/login";
@@ -27,6 +28,7 @@ function App() {
         dataProvider={pbDataProvider}
         authProvider={pbAuthProvider}
         liveProvider={pbLiveProvider}
+        accessControlProvider={accessControlProvider}
         resources={[
           {
             name: "iam_policies",

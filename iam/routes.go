@@ -25,6 +25,11 @@ func registerRoutes(app core.App, cache *PolicyCache) {
 				body.Resource = "*"
 			}
 
+			// Superusers bypass IAM (consistent with middleware behavior)
+			if e.HasSuperuserAuth() {
+				return e.JSON(http.StatusOK, map[string]any{"allowed": true})
+			}
+
 			userID := e.Auth.Id
 
 			allowed, reason, err := Evaluate(app, cache, userID, body.Action, body.Resource)
