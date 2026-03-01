@@ -1,5 +1,6 @@
-import { useList, useCreate, useDelete, useCustom } from "@refinedev/core";
-import { useState } from "react";
+import { useList, useCreate, useDelete } from "@refinedev/core";
+import { useState, useEffect } from "react";
+import { pbClient } from "@/providers/pocketbase";
 import {
   Table,
   TableBody,
@@ -29,6 +30,7 @@ interface PBCollection {
   id: string;
   name: string;
   type: string;
+  system: boolean;
 }
 
 export function ManagedCollectionList() {
@@ -43,18 +45,20 @@ export function ManagedCollectionList() {
   });
   const managed = managedResult.data ?? [];
 
-  const { query: collectionsQuery } = useCustom<PBCollection[]>({
-    url: "/api/collections",
-    method: "get",
-  });
-  const allCollectionsRaw = collectionsQuery.data?.data;
-  const allCollections: PBCollection[] = Array.isArray(allCollectionsRaw)
-    ? allCollectionsRaw
-    : (allCollectionsRaw as unknown as { items?: PBCollection[] })?.items ?? [];
+  const [allCollections, setAllCollections] = useState<PBCollection[]>([]);
+  useEffect(() => {
+    pbClient.send<PBCollection[]>("/api/collections", {
+      method: "GET",
+      query: { filter: "system=false", perPage: 200 },
+    }).then((data) => {
+      const items = Array.isArray(data) ? data : (data as unknown as { items?: PBCollection[] })?.items ?? [];
+      setAllCollections(items);
+    });
+  }, []);
 
   const managedNames = new Set(managed.map((m: ManagedCollection) => m.collection_name));
   const available = allCollections.filter(
-    (c) => !managedNames.has(c.name) && !c.name.startsWith("iam_") && c.name !== "_superusers"
+    (c) => !managedNames.has(c.name)
   );
 
   const { mutate: createRecord } = useCreate();

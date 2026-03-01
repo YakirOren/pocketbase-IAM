@@ -1,6 +1,7 @@
 import { useState } from "react";
-import { useList, useCustomMutation } from "@refinedev/core";
+import { useList } from "@refinedev/core";
 import { useSearchParams } from "react-router";
+import { pbClient } from "@/providers/pocketbase";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
@@ -53,21 +54,21 @@ export function Simulator() {
     )
   ).sort();
 
-  const { mutate, mutation } = useCustomMutation();
+  const [isPending, setIsPending] = useState(false);
 
-  const handleSimulate = () => {
-    mutate(
-      {
-        url: "/api/iam/simulate",
-        method: "post",
-        values: { user_id: userId, action, resource },
-      },
-      {
-        onSuccess: (data) => {
-          setResult(data?.data as unknown as SimulateResult);
-        },
-      }
-    );
+  const handleSimulate = async () => {
+    setIsPending(true);
+    try {
+      const data = await pbClient.send<SimulateResult>("/api/iam/simulate", {
+        method: "POST",
+        body: { user_id: userId, action, resource },
+      });
+      setResult(data);
+    } catch {
+      setResult({ allowed: false, reason: "Request failed", trace: ["Error calling /api/iam/simulate"] });
+    } finally {
+      setIsPending(false);
+    }
   };
 
   return (
@@ -120,9 +121,9 @@ export function Simulator() {
 
         <Button
           onClick={handleSimulate}
-          disabled={!userId || !action || mutation.isPending}
+          disabled={!userId || !action || isPending}
         >
-          {mutation.isPending ? "Simulating..." : "Simulate"}
+          {isPending ? "Simulating..." : "Simulate"}
         </Button>
       </div>
 
