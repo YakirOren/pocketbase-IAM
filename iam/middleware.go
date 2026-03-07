@@ -1,6 +1,7 @@
 package iam
 
 import (
+	"log/slog"
 	"strings"
 
 	"github.com/pocketbase/dbx"
@@ -8,10 +9,20 @@ import (
 	"github.com/pocketbase/pocketbase/core"
 )
 
+const (
+	colPolicies           = "iam_policies"
+	colRolePolicies       = "iam_role_policies"
+	colUserPolicies       = "iam_user_policies"
+	colUserRoles          = "iam_user_roles"
+	colGroupUsers         = "iam_group_users"
+	colGroupPolicies      = "iam_group_policies"
+	colManagedCollections = "iam_managed_collections"
+)
+
 // registerEnforcementHooks registers hooks for Create, Update, Delete, View, and List
 // operations on all collections. Each hook checks if the collection is IAM-managed,
 // skips superusers and unauthenticated requests, then evaluates IAM policies.
-func registerEnforcementHooks(app core.App, cache *PolicyCache) {
+func registerEnforcementHooks(app core.App, cache *PolicyCache, logger *slog.Logger) {
 	enforce := func(collectionName, operation string, hasSuperuserAuth func() bool, auth *core.Record, next func() error) error {
 		managed, err := IsManagedCollection(app, cache, collectionName)
 		if err != nil {
@@ -32,11 +43,11 @@ func registerEnforcementHooks(app core.App, cache *PolicyCache) {
 		action := ActionForOperation(collectionName, operation)
 		allowed, reason, err := Evaluate(app, cache, auth.Id, action, "*")
 		if err != nil {
-			app.Logger().Error("IAM evaluation error", "error", err, "user", auth.Id, "action", action)
+			logger.Error("IAM evaluation error", "error", err, "user", auth.Id, "action", action)
 			return apis.NewApiError(500, "internal error", nil)
 		}
 		if !allowed {
-			app.Logger().Warn("IAM access denied", "user", auth.Id, "action", action, "reason", reason)
+			logger.Warn("IAM access denied", "user", auth.Id, "action", action, "reason", reason)
 			return apis.NewForbiddenError("access denied", nil)
 		}
 		return next()
@@ -77,8 +88,8 @@ func registerPolicyValidationHooks(app core.App) {
 		return e.Next()
 	}
 
-	app.OnRecordCreateRequest("iam_policies").BindFunc(validate)
-	app.OnRecordUpdateRequest("iam_policies").BindFunc(validate)
+	app.OnRecordCreateRequest(colPolicies).BindFunc(validate)
+	app.OnRecordUpdateRequest(colPolicies).BindFunc(validate)
 }
 
 // registerDuplicatePreventionHooks prevents duplicate assignments in join tables.
@@ -88,11 +99,11 @@ func registerDuplicatePreventionHooks(app core.App) {
 		field1     string
 		field2     string
 	}{
-		{"iam_role_policies", "role", "policy"},
-		{"iam_user_policies", "user", "policy"},
-		{"iam_user_roles", "user", "role"},
-		{"iam_group_users", "group", "user"},
-		{"iam_group_policies", "group", "policy"},
+		{colRolePolicies, "role", "policy"},
+		{colUserPolicies, "user", "policy"},
+		{colUserRoles, "user", "role"},
+		{colGroupUsers, "group", "user"},
+		{colGroupPolicies, "group", "policy"},
 	}
 
 	for _, jt := range joinTables {
@@ -115,7 +126,7 @@ func registerDuplicatePreventionHooks(app core.App) {
 
 // registerCacheInvalidationHooks invalidates cached policies when join tables
 // or policy documents change.
-func registerCacheInvalidationHooks(app core.App, cache *PolicyCache) {
+func registerCacheInvalidationHooks(app core.App, cache *PolicyCache, logger *slog.Logger) {
 	// Helper: invalidate a single user from a record's field.
 	// On updates, also invalidates the old user if the field value changed.
 	invalidateUserField := func(e *core.RecordEvent, field string) error {
@@ -135,7 +146,7 @@ func registerCacheInvalidationHooks(app core.App, cache *PolicyCache) {
 		}
 		records, err := app.FindRecordsByFilter(collection, field+" = {:val}", "", 0, 0, dbx.Params{"val": value})
 		if err != nil {
-			app.Logger().Error("cache invalidation query failed", "collection", collection, "field", field, "error", err)
+			logger.Error("cache invalidation query failed", "collection", collection, "field", field, "error", err)
 			return
 		}
 		ids := make([]string, len(records))
@@ -148,10 +159,10 @@ func registerCacheInvalidationHooks(app core.App, cache *PolicyCache) {
 	// Helper: find all users in a group and invalidate them.
 	// On updates, also handles the old group if it changed.
 	invalidateGroupUsers := func(e *core.RecordEvent) error {
-		invalidateUsersForFieldValue("iam_group_users", "group", e.Record.GetString("group"))
+		invalidateUsersForFieldValue(colGroupUsers, "group", e.Record.GetString("group"))
 		if orig := e.Record.Original(); orig != nil {
 			if oldVal := orig.GetString("group"); oldVal != "" && oldVal != e.Record.GetString("group") {
-				invalidateUsersForFieldValue("iam_group_users", "group", oldVal)
+				invalidateUsersForFieldValue(colGroupUsers, "group", oldVal)
 			}
 		}
 		return e.Next()
@@ -160,69 +171,36 @@ func registerCacheInvalidationHooks(app core.App, cache *PolicyCache) {
 	// Helper: find all users with a role and invalidate them.
 	// On updates, also handles the old role if it changed.
 	invalidateRoleUsers := func(e *core.RecordEvent) error {
-		invalidateUsersForFieldValue("iam_user_roles", "role", e.Record.GetString("role"))
+		invalidateUsersForFieldValue(colUserRoles, "role", e.Record.GetString("role"))
 		if orig := e.Record.Original(); orig != nil {
 			if oldVal := orig.GetString("role"); oldVal != "" && oldVal != e.Record.GetString("role") {
-				invalidateUsersForFieldValue("iam_user_roles", "role", oldVal)
+				invalidateUsersForFieldValue(colUserRoles, "role", oldVal)
 			}
 		}
 		return e.Next()
 	}
 
-	// --- User-level invalidation: iam_user_policies ---
-	app.OnRecordAfterCreateSuccess("iam_user_policies").BindFunc(func(e *core.RecordEvent) error {
+	// --- User-level invalidation: iam_user_policies, iam_user_roles, iam_group_users ---
+	userJoinTables := []string{colUserPolicies, colUserRoles, colGroupUsers}
+	app.OnRecordAfterCreateSuccess(userJoinTables...).BindFunc(func(e *core.RecordEvent) error {
 		return invalidateUserField(e, "user")
 	})
-	app.OnRecordAfterUpdateSuccess("iam_user_policies").BindFunc(func(e *core.RecordEvent) error {
+	app.OnRecordAfterUpdateSuccess(userJoinTables...).BindFunc(func(e *core.RecordEvent) error {
 		return invalidateUserField(e, "user")
 	})
-	app.OnRecordAfterDeleteSuccess("iam_user_policies").BindFunc(func(e *core.RecordEvent) error {
-		return invalidateUserField(e, "user")
-	})
-
-	// --- User-level invalidation: iam_user_roles ---
-	app.OnRecordAfterCreateSuccess("iam_user_roles").BindFunc(func(e *core.RecordEvent) error {
-		return invalidateUserField(e, "user")
-	})
-	app.OnRecordAfterUpdateSuccess("iam_user_roles").BindFunc(func(e *core.RecordEvent) error {
-		return invalidateUserField(e, "user")
-	})
-	app.OnRecordAfterDeleteSuccess("iam_user_roles").BindFunc(func(e *core.RecordEvent) error {
-		return invalidateUserField(e, "user")
-	})
-
-	// --- User-level invalidation: iam_group_users ---
-	app.OnRecordAfterCreateSuccess("iam_group_users").BindFunc(func(e *core.RecordEvent) error {
-		return invalidateUserField(e, "user")
-	})
-	app.OnRecordAfterUpdateSuccess("iam_group_users").BindFunc(func(e *core.RecordEvent) error {
-		return invalidateUserField(e, "user")
-	})
-	app.OnRecordAfterDeleteSuccess("iam_group_users").BindFunc(func(e *core.RecordEvent) error {
+	app.OnRecordAfterDeleteSuccess(userJoinTables...).BindFunc(func(e *core.RecordEvent) error {
 		return invalidateUserField(e, "user")
 	})
 
 	// --- Group-level invalidation: iam_group_policies ---
-	app.OnRecordAfterCreateSuccess("iam_group_policies").BindFunc(func(e *core.RecordEvent) error {
-		return invalidateGroupUsers(e)
-	})
-	app.OnRecordAfterUpdateSuccess("iam_group_policies").BindFunc(func(e *core.RecordEvent) error {
-		return invalidateGroupUsers(e)
-	})
-	app.OnRecordAfterDeleteSuccess("iam_group_policies").BindFunc(func(e *core.RecordEvent) error {
-		return invalidateGroupUsers(e)
-	})
+	app.OnRecordAfterCreateSuccess(colGroupPolicies).BindFunc(invalidateGroupUsers)
+	app.OnRecordAfterUpdateSuccess(colGroupPolicies).BindFunc(invalidateGroupUsers)
+	app.OnRecordAfterDeleteSuccess(colGroupPolicies).BindFunc(invalidateGroupUsers)
 
 	// --- Role-level invalidation: iam_role_policies ---
-	app.OnRecordAfterCreateSuccess("iam_role_policies").BindFunc(func(e *core.RecordEvent) error {
-		return invalidateRoleUsers(e)
-	})
-	app.OnRecordAfterUpdateSuccess("iam_role_policies").BindFunc(func(e *core.RecordEvent) error {
-		return invalidateRoleUsers(e)
-	})
-	app.OnRecordAfterDeleteSuccess("iam_role_policies").BindFunc(func(e *core.RecordEvent) error {
-		return invalidateRoleUsers(e)
-	})
+	app.OnRecordAfterCreateSuccess(colRolePolicies).BindFunc(invalidateRoleUsers)
+	app.OnRecordAfterUpdateSuccess(colRolePolicies).BindFunc(invalidateRoleUsers)
+	app.OnRecordAfterDeleteSuccess(colRolePolicies).BindFunc(invalidateRoleUsers)
 
 	// --- Policy document changes: iam_policies ---
 	invalidatePolicyUsers := func(e *core.RecordEvent) error {
@@ -231,24 +209,24 @@ func registerCacheInvalidationHooks(app core.App, cache *PolicyCache) {
 		seen := make(map[string]struct{})
 
 		// 1. Direct user-policy assignments
-		userPolicies, err := app.FindRecordsByFilter("iam_user_policies", "policy = {:pid}", "", 0, 0, dbx.Params{"pid": policyID})
+		userPolicies, err := app.FindRecordsByFilter(colUserPolicies, "policy = {:pid}", "", 0, 0, dbx.Params{"pid": policyID})
 		if err != nil {
-			app.Logger().Error("cache invalidation: failed to find user-policy assignments", "policy", policyID, "error", err)
+			logger.Error("cache invalidation: failed to find user-policy assignments", "policy", policyID, "error", err)
 		} else {
 			for _, r := range userPolicies {
 				seen[r.GetString("user")] = struct{}{}
 			}
 		}
 
-		// 2. Group-policy → group-users
-		groupPolicies, err := app.FindRecordsByFilter("iam_group_policies", "policy = {:pid}", "", 0, 0, dbx.Params{"pid": policyID})
+		// 2. Group-policy -> group-users
+		groupPolicies, err := app.FindRecordsByFilter(colGroupPolicies, "policy = {:pid}", "", 0, 0, dbx.Params{"pid": policyID})
 		if err != nil {
-			app.Logger().Error("cache invalidation: failed to find group-policy assignments", "policy", policyID, "error", err)
+			logger.Error("cache invalidation: failed to find group-policy assignments", "policy", policyID, "error", err)
 		} else {
 			for _, gp := range groupPolicies {
-				groupUsers, err := app.FindRecordsByFilter("iam_group_users", "group = {:gid}", "", 0, 0, dbx.Params{"gid": gp.GetString("group")})
+				groupUsers, err := app.FindRecordsByFilter(colGroupUsers, "group = {:gid}", "", 0, 0, dbx.Params{"gid": gp.GetString("group")})
 				if err != nil {
-					app.Logger().Error("cache invalidation: failed to find group users", "group", gp.GetString("group"), "error", err)
+					logger.Error("cache invalidation: failed to find group users", "group", gp.GetString("group"), "error", err)
 				} else {
 					for _, gu := range groupUsers {
 						seen[gu.GetString("user")] = struct{}{}
@@ -257,15 +235,15 @@ func registerCacheInvalidationHooks(app core.App, cache *PolicyCache) {
 			}
 		}
 
-		// 3. Role-policy → user-roles
-		rolePolicies, err := app.FindRecordsByFilter("iam_role_policies", "policy = {:pid}", "", 0, 0, dbx.Params{"pid": policyID})
+		// 3. Role-policy -> user-roles
+		rolePolicies, err := app.FindRecordsByFilter(colRolePolicies, "policy = {:pid}", "", 0, 0, dbx.Params{"pid": policyID})
 		if err != nil {
-			app.Logger().Error("cache invalidation: failed to find role-policy assignments", "policy", policyID, "error", err)
+			logger.Error("cache invalidation: failed to find role-policy assignments", "policy", policyID, "error", err)
 		} else {
 			for _, rp := range rolePolicies {
-				userRoles, err := app.FindRecordsByFilter("iam_user_roles", "role = {:rid}", "", 0, 0, dbx.Params{"rid": rp.GetString("role")})
+				userRoles, err := app.FindRecordsByFilter(colUserRoles, "role = {:rid}", "", 0, 0, dbx.Params{"rid": rp.GetString("role")})
 				if err != nil {
-					app.Logger().Error("cache invalidation: failed to find role users", "role", rp.GetString("role"), "error", err)
+					logger.Error("cache invalidation: failed to find role users", "role", rp.GetString("role"), "error", err)
 				} else {
 					for _, ur := range userRoles {
 						seen[ur.GetString("user")] = struct{}{}
@@ -283,15 +261,15 @@ func registerCacheInvalidationHooks(app core.App, cache *PolicyCache) {
 		return e.Next()
 	}
 
-	app.OnRecordAfterUpdateSuccess("iam_policies").BindFunc(invalidatePolicyUsers)
-	app.OnRecordAfterDeleteSuccess("iam_policies").BindFunc(invalidatePolicyUsers)
+	app.OnRecordAfterUpdateSuccess(colPolicies).BindFunc(invalidatePolicyUsers)
+	app.OnRecordAfterDeleteSuccess(colPolicies).BindFunc(invalidatePolicyUsers)
 }
 
 // registerManagedCollectionHooks syncs PocketBase collection rules when collections
 // are added to or removed from iam_managed_collections.
-func registerManagedCollectionHooks(app core.App, cache *PolicyCache) {
+func registerManagedCollectionHooks(app core.App, cache *PolicyCache, logger *slog.Logger) {
 	// Guard: prevent IAM system collections from being managed (self-lock prevention).
-	app.OnRecordCreateRequest("iam_managed_collections").BindFunc(func(e *core.RecordRequestEvent) error {
+	app.OnRecordCreateRequest(colManagedCollections).BindFunc(func(e *core.RecordRequestEvent) error {
 		name := e.Record.GetString("collection_name")
 		if strings.HasPrefix(name, "iam_") {
 			return e.BadRequestError("cannot manage IAM system collections", nil)
@@ -299,19 +277,19 @@ func registerManagedCollectionHooks(app core.App, cache *PolicyCache) {
 		return e.Next()
 	})
 
-	app.OnRecordAfterCreateSuccess("iam_managed_collections").BindFunc(func(e *core.RecordEvent) error {
+	app.OnRecordAfterCreateSuccess(colManagedCollections).BindFunc(func(e *core.RecordEvent) error {
 		name := e.Record.GetString("collection_name")
 		if err := setCollectionRulesOpen(app, name); err != nil {
-			app.Logger().Error("failed to set managed collection rules", "collection", name, "error", err)
+			logger.Error("failed to set managed collection rules", "collection", name, "error", err)
 		}
 		cache.InvalidateManagedCollection(name)
 		return e.Next()
 	})
 
-	app.OnRecordAfterDeleteSuccess("iam_managed_collections").BindFunc(func(e *core.RecordEvent) error {
+	app.OnRecordAfterDeleteSuccess(colManagedCollections).BindFunc(func(e *core.RecordEvent) error {
 		name := e.Record.GetString("collection_name")
 		if err := setCollectionRulesClosed(app, name); err != nil {
-			app.Logger().Error("failed to restore collection rules", "collection", name, "error", err)
+			logger.Error("failed to restore collection rules", "collection", name, "error", err)
 		}
 		cache.InvalidateManagedCollection(name)
 		return e.Next()

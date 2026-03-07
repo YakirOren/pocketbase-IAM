@@ -5,6 +5,7 @@ import { defineConfig } from "vite";
 
 export default defineConfig({
   plugins: [react(), tailwindcss()],
+  base: "/_/iam/",
   resolve: {
     alias: {
       "@": path.resolve(__dirname, "./src"),
@@ -24,7 +25,7 @@ export default defineConfig({
     },
   },
   build: {
-    outDir: "../pb_public",
+    outDir: "../iam/dashboard",
     emptyOutDir: true,
   },
 });

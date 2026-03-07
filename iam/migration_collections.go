@@ -1,4 +1,4 @@
-package migrations
+package iam
 
 import (
 	"github.com/pocketbase/pocketbase/core"

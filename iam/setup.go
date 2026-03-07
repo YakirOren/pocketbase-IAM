@@ -2,44 +2,73 @@ package iam
 
 import (
 	"fmt"
-	"sync"
+	"log/slog"
+	"time"
 
 	"github.com/pocketbase/pocketbase/core"
 	"github.com/pocketbase/pocketbase/tools/types"
 )
 
-var (
-	sharedCache     *PolicyCache
-	sharedCacheOnce sync.Once
-)
+// Options configures the IAM system.
+type Options struct {
+	// CacheMaxSize is the maximum number of entries in the policy LRU cache.
+	// Default: 10000
+	CacheMaxSize int
 
-func getOrCreateCache() *PolicyCache {
-	sharedCacheOnce.Do(func() {
-		sharedCache = NewPolicyCache()
-	})
-	return sharedCache
+	// CacheTTL is how long cached policy evaluations remain valid.
+	// Default: 60s
+	CacheTTL time.Duration
+
+	// Logger is an optional structured logger for IAM events.
+	// If nil, the PocketBase app's default logger is used.
+	Logger *slog.Logger
 }
 
-// RegisterRoutes registers the IAM custom API routes.
-func RegisterRoutes(app core.App) {
-	cache := getOrCreateCache()
-	registerRoutes(app, cache)
+// DefaultOptions returns Options with sensible defaults.
+func DefaultOptions() Options {
+	return Options{
+		CacheMaxSize: 10_000,
+		CacheTTL:     60 * time.Second,
+	}
 }
 
-// RegisterHooks registers all IAM hooks: enforcement, validation,
-// duplicate prevention, cache invalidation, and managed-collection sync.
-func RegisterHooks(app core.App) {
-	cache := getOrCreateCache()
-	registerEnforcementHooks(app, cache)
+func (o *Options) validate() error {
+	if o.CacheMaxSize <= 0 {
+		return fmt.Errorf("CacheMaxSize must be positive, got %d", o.CacheMaxSize)
+	}
+	if o.CacheTTL <= 0 {
+		return fmt.Errorf("CacheTTL must be positive, got %s", o.CacheTTL)
+	}
+	return nil
+}
+
+// Setup initializes the IAM system on a PocketBase app.
+// It registers all routes, hooks, enforcement, and the admin dashboard.
+// Migrations are auto-registered via package init().
+func Setup(app core.App, opts Options) error {
+	if err := opts.validate(); err != nil {
+		return fmt.Errorf("invalid IAM options: %w", err)
+	}
+
+	cache := NewPolicyCache(opts.CacheMaxSize, opts.CacheTTL)
+
+	logger := opts.Logger
+	if logger == nil {
+		logger = app.Logger()
+	}
+
+	registerRoutes(app, cache, logger)
+	registerEnforcementHooks(app, cache, logger)
 	registerPolicyValidationHooks(app)
 	registerDuplicatePreventionHooks(app)
-	registerCacheInvalidationHooks(app, cache)
-	registerManagedCollectionHooks(app, cache)
+	registerCacheInvalidationHooks(app, cache, logger)
+	registerManagedCollectionHooks(app, cache, logger)
+	registerDashboardRoutes(app)
 
 	// Boot sync: set rules on already-managed collections.
 	app.OnServe().BindFunc(func(se *core.ServeEvent) error {
 		if err := SyncManagedCollectionRules(app); err != nil {
-			app.Logger().Error("failed to sync managed collection rules on boot", "error", err)
+			logger.Error("failed to sync managed collection rules on boot", "error", err)
 		}
 		return se.Next()
 	})
@@ -49,6 +78,8 @@ func RegisterHooks(app core.App) {
 		cache.Stop()
 		return e.Next()
 	})
+
+	return nil
 }
 
 // SyncManagedCollectionRules reads all iam_managed_collections and sets

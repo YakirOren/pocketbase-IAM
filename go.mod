@@ -1,4 +1,4 @@
-module pocketbase-iam
+module github.com/yakiroren/pocketbase-IAM
 
 go 1.24.0
 
