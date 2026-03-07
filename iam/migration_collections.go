@@ -6,6 +6,8 @@ import (
 )
 
 func init() {
+	// The migration name is kept as the original filename for backwards compatibility
+	// with existing databases that have already applied this migration.
 	core.SystemMigrations.Register(upCreateIAMCollections, downCreateIAMCollections, "1_create_iam_collections.go")
 }
 

@@ -13,6 +13,9 @@ export default defineConfig({
   },
   server: {
     port: 5173,
+    // Proxy API and PocketBase admin routes to the local PB instance.
+    // The /_  prefix also covers /_/iam/ which lets the dev server
+    // forward auth-related requests to PB during development.
     proxy: {
       "/api": {
         target: "http://127.0.0.1:8090",

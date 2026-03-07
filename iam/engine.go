@@ -38,7 +38,7 @@ func IsManagedCollection(app core.App, cache *PolicyCache, collectionName string
 	}
 
 	_, err := app.FindFirstRecordByFilter(
-		"iam_managed_collections",
+		colManagedCollections,
 		"collection_name = {:name}",
 		dbx.Params{"name": collectionName},
 	)
@@ -60,9 +60,9 @@ func IsManagedCollection(app core.App, cache *PolicyCache, collectionName string
 func collectStatements(app core.App, userID string) ([]Statement, error) {
 	policyIDs := make(map[string]struct{})
 
-	// 1. Direct policies (iam_user_policies)
+	// 1. Direct policies
 	directRecords, err := app.FindRecordsByFilter(
-		"iam_user_policies",
+		colUserPolicies,
 		"user = {:uid}",
 		"", 0, 0,
 		dbx.Params{"uid": userID},
@@ -74,9 +74,9 @@ func collectStatements(app core.App, userID string) ([]Statement, error) {
 		policyIDs[r.GetString("policy")] = struct{}{}
 	}
 
-	// 2. Group policies (iam_group_users → iam_group_policies) — batched
+	// 2. Group policies — batched
 	groupUserRecords, err := app.FindRecordsByFilter(
-		"iam_group_users",
+		colGroupUsers,
 		"user = {:uid}",
 		"", 0, 0,
 		dbx.Params{"uid": userID},
@@ -91,7 +91,7 @@ func collectStatements(app core.App, userID string) ([]Statement, error) {
 		}
 		filter, params := buildInFilter("group", groupIDs)
 		groupPolicyRecords, err := app.FindRecordsByFilter(
-			"iam_group_policies",
+			colGroupPolicies,
 			filter,
 			"", 0, 0,
 			params,
@@ -104,9 +104,9 @@ func collectStatements(app core.App, userID string) ([]Statement, error) {
 		}
 	}
 
-	// 3. Role policies (iam_user_roles → iam_role_policies) — batched
+	// 3. Role policies — batched
 	roleRecords, err := app.FindRecordsByFilter(
-		"iam_user_roles",
+		colUserRoles,
 		"user = {:uid}",
 		"", 0, 0,
 		dbx.Params{"uid": userID},
@@ -121,7 +121,7 @@ func collectStatements(app core.App, userID string) ([]Statement, error) {
 		}
 		filter, params := buildInFilter("role", roleIDs)
 		rolePolicyRecords, err := app.FindRecordsByFilter(
-			"iam_role_policies",
+			colRolePolicies,
 			filter,
 			"", 0, 0,
 			params,
@@ -144,7 +144,7 @@ func collectStatements(app core.App, userID string) ([]Statement, error) {
 	for id := range policyIDs {
 		idSlice = append(idSlice, id)
 	}
-	policyRecords, err := app.FindRecordsByIds("iam_policies", idSlice)
+	policyRecords, err := app.FindRecordsByIds(colPolicies, idSlice)
 	if err != nil {
 		return nil, fmt.Errorf("failed to batch-fetch policies: %w", err)
 	}
@@ -209,6 +209,9 @@ type SimulateResult struct {
 }
 
 // EvaluateVerbose performs the same evaluation as Evaluate but returns a detailed trace.
+// The cache parameter is accepted for API consistency but is intentionally not used;
+// the simulator always queries the database directly to ensure fresh results and
+// accurate source attribution.
 func EvaluateVerbose(app core.App, cache *PolicyCache, userID, action, resource string) (*SimulateResult, error) {
 	result := &SimulateResult{}
 
@@ -223,7 +226,7 @@ func EvaluateVerbose(app core.App, cache *PolicyCache, userID, action, resource 
 
 	// 1. Direct policies
 	directRecords, err := app.FindRecordsByFilter(
-		"iam_user_policies",
+		colUserPolicies,
 		"user = {:uid}",
 		"", 0, 0,
 		dbx.Params{"uid": userID},
@@ -239,7 +242,7 @@ func EvaluateVerbose(app core.App, cache *PolicyCache, userID, action, resource 
 
 	// 2. Group policies
 	groupUserRecords, err := app.FindRecordsByFilter(
-		"iam_group_users",
+		colGroupUsers,
 		"user = {:uid}",
 		"", 0, 0,
 		dbx.Params{"uid": userID},
@@ -259,7 +262,7 @@ func EvaluateVerbose(app core.App, cache *PolicyCache, userID, action, resource 
 		for i, gu := range groupUserRecords {
 			groupIDs[i] = gu.GetString("group")
 		}
-		groupRecords, err := app.FindRecordsByIds("iam_groups", groupIDs)
+		groupRecords, err := app.FindRecordsByIds(colGroups, groupIDs)
 		if err != nil {
 			return nil, fmt.Errorf("failed to fetch groups: %w", err)
 		}
@@ -269,46 +272,56 @@ func EvaluateVerbose(app core.App, cache *PolicyCache, userID, action, resource 
 
 		filter, params := buildInFilter("group", groupIDs)
 		groupPolicyRecords, err := app.FindRecordsByFilter(
-			"iam_group_policies", filter, "", 0, 0, params,
+			colGroupPolicies, filter, "", 0, 0, params,
 		)
 		if err != nil {
 			return nil, fmt.Errorf("failed to fetch group policies: %w", err)
 		}
-		// Map policy ID → group ID for source tracking
-		groupPolicyMap := make(map[string]string)
+		// Collect unique policy IDs and track which groups they came from.
+		groupPolicyGroups := make(map[string][]string) // policy ID → group IDs
 		for _, gp := range groupPolicyRecords {
-			groupPolicyMap[gp.GetString("policy")] = gp.GetString("group")
+			pid := gp.GetString("policy")
+			gid := gp.GetString("group")
+			groupPolicyGroups[pid] = append(groupPolicyGroups[pid], gid)
 		}
-		for policyID, groupID := range groupPolicyMap {
-			groupName := groupID
-			for _, g := range groups {
-				if g.id == groupID {
-					groupName = g.name
-					break
-				}
-			}
-			pRecs, err := app.FindRecordsByIds("iam_policies", []string{policyID})
-			if err != nil || len(pRecs) == 0 {
-				continue
-			}
-			doc, err := ParsePolicy(pRecs[0].Get("document"))
+		gpIDs := make([]string, 0, len(groupPolicyGroups))
+		for pid := range groupPolicyGroups {
+			gpIDs = append(gpIDs, pid)
+		}
+		if len(gpIDs) > 0 {
+			pRecs, err := app.FindRecordsByIds(colPolicies, gpIDs)
 			if err != nil {
-				continue
+				return nil, fmt.Errorf("failed to fetch group-attached policies: %w", err)
 			}
-			pName := pRecs[0].GetString("name")
-			for _, stmt := range doc.Statement {
-				tracked = append(tracked, trackedStatement{
-					Statement:  stmt,
-					PolicyName: pName,
-					Source:     "group:" + groupName,
-				})
+			for _, pr := range pRecs {
+				doc, err := ParsePolicy(pr.Get("document"))
+				if err != nil {
+					continue
+				}
+				pName := pr.GetString("name")
+				for _, gid := range groupPolicyGroups[pr.Id] {
+					groupName := gid
+					for _, g := range groups {
+						if g.id == gid {
+							groupName = g.name
+							break
+						}
+					}
+					for _, stmt := range doc.Statement {
+						tracked = append(tracked, trackedStatement{
+							Statement:  stmt,
+							PolicyName: pName,
+							Source:     "group:" + groupName,
+						})
+					}
+				}
 			}
 		}
 	}
 
 	// 3. Role policies
 	roleRecords, err := app.FindRecordsByFilter(
-		"iam_user_roles",
+		colUserRoles,
 		"user = {:uid}",
 		"", 0, 0,
 		dbx.Params{"uid": userID},
@@ -328,7 +341,7 @@ func EvaluateVerbose(app core.App, cache *PolicyCache, userID, action, resource 
 		for i, ur := range roleRecords {
 			roleIDs[i] = ur.GetString("role")
 		}
-		roleRecs, err := app.FindRecordsByIds("iam_roles", roleIDs)
+		roleRecs, err := app.FindRecordsByIds(colRoles, roleIDs)
 		if err != nil {
 			return nil, fmt.Errorf("failed to fetch roles: %w", err)
 		}
@@ -338,45 +351,56 @@ func EvaluateVerbose(app core.App, cache *PolicyCache, userID, action, resource 
 
 		filter, params := buildInFilter("role", roleIDs)
 		rolePolicyRecords, err := app.FindRecordsByFilter(
-			"iam_role_policies", filter, "", 0, 0, params,
+			colRolePolicies, filter, "", 0, 0, params,
 		)
 		if err != nil {
 			return nil, fmt.Errorf("failed to fetch role policies: %w", err)
 		}
-		rolePolicyMap := make(map[string]string)
+		// Collect unique policy IDs and track which roles they came from.
+		rolePolicyRoles := make(map[string][]string) // policy ID → role IDs
 		for _, rp := range rolePolicyRecords {
-			rolePolicyMap[rp.GetString("policy")] = rp.GetString("role")
+			pid := rp.GetString("policy")
+			rid := rp.GetString("role")
+			rolePolicyRoles[pid] = append(rolePolicyRoles[pid], rid)
 		}
-		for policyID, roleID := range rolePolicyMap {
-			roleName := roleID
-			for _, r := range roles {
-				if r.id == roleID {
-					roleName = r.name
-					break
-				}
-			}
-			pRecs, err := app.FindRecordsByIds("iam_policies", []string{policyID})
-			if err != nil || len(pRecs) == 0 {
-				continue
-			}
-			doc, err := ParsePolicy(pRecs[0].Get("document"))
+		rpIDs := make([]string, 0, len(rolePolicyRoles))
+		for pid := range rolePolicyRoles {
+			rpIDs = append(rpIDs, pid)
+		}
+		if len(rpIDs) > 0 {
+			pRecs, err := app.FindRecordsByIds(colPolicies, rpIDs)
 			if err != nil {
-				continue
+				return nil, fmt.Errorf("failed to fetch role-attached policies: %w", err)
 			}
-			pName := pRecs[0].GetString("name")
-			for _, stmt := range doc.Statement {
-				tracked = append(tracked, trackedStatement{
-					Statement:  stmt,
-					PolicyName: pName,
-					Source:     "role:" + roleName,
-				})
+			for _, pr := range pRecs {
+				doc, err := ParsePolicy(pr.Get("document"))
+				if err != nil {
+					continue
+				}
+				pName := pr.GetString("name")
+				for _, rid := range rolePolicyRoles[pr.Id] {
+					roleName := rid
+					for _, r := range roles {
+						if r.id == rid {
+							roleName = r.name
+							break
+						}
+					}
+					for _, stmt := range doc.Statement {
+						tracked = append(tracked, trackedStatement{
+							Statement:  stmt,
+							PolicyName: pName,
+							Source:     "role:" + roleName,
+						})
+					}
+				}
 			}
 		}
 	}
 
 	// 4. Direct policies — fetch and parse
 	if len(directPolicyIDs) > 0 {
-		pRecs, err := app.FindRecordsByIds("iam_policies", directPolicyIDs)
+		pRecs, err := app.FindRecordsByIds(colPolicies, directPolicyIDs)
 		if err != nil {
 			return nil, fmt.Errorf("failed to batch-fetch direct policies: %w", err)
 		}

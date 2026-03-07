@@ -16,7 +16,12 @@ type PolicyCache struct {
 // NewPolicyCache creates a new cache with two sub-caches:
 //   - policies: configurable max entries and TTL (resolved user statements)
 //   - managed: 1,000 max entries, 5min TTL (collection managed status)
+//
+// maxSize must be positive; if not, it defaults to 10,000.
 func NewPolicyCache(maxSize int, ttl time.Duration) *PolicyCache {
+	if maxSize <= 0 {
+		maxSize = 10_000
+	}
 	policies := ttlcache.New[string, []Statement](
 		ttlcache.WithCapacity[string, []Statement](uint64(maxSize)),
 		ttlcache.WithTTL[string, []Statement](ttl),

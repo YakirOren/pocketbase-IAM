@@ -67,7 +67,7 @@ func Setup(app core.App, opts Options) error {
 
 	// Boot sync: set rules on already-managed collections.
 	app.OnServe().BindFunc(func(se *core.ServeEvent) error {
-		if err := SyncManagedCollectionRules(app); err != nil {
+		if err := SyncManagedCollectionRules(app, logger); err != nil {
 			logger.Error("failed to sync managed collection rules on boot", "error", err)
 		}
 		return se.Next()
@@ -84,7 +84,7 @@ func Setup(app core.App, opts Options) error {
 
 // SyncManagedCollectionRules reads all iam_managed_collections and sets
 // their PocketBase rules to require authentication.
-func SyncManagedCollectionRules(app core.App) error {
+func SyncManagedCollectionRules(app core.App, logger *slog.Logger) error {
 	records, err := app.FindRecordsByFilter("iam_managed_collections", "", "", 0, 0)
 	if err != nil {
 		return fmt.Errorf("failed to query managed collections: %w", err)
@@ -92,7 +92,7 @@ func SyncManagedCollectionRules(app core.App) error {
 	for _, r := range records {
 		name := r.GetString("collection_name")
 		if err := setCollectionRulesOpen(app, name); err != nil {
-			app.Logger().Error("failed to sync rules for collection", "collection", name, "error", err)
+			logger.Error("failed to sync rules for collection", "collection", name, "error", err)
 		}
 	}
 	return nil

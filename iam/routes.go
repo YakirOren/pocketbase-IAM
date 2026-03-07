@@ -8,6 +8,9 @@ import (
 	"github.com/pocketbase/pocketbase/core"
 )
 
+// registerRoutes adds the IAM API endpoints:
+//   - POST /api/iam/check — evaluate an action for the authenticated user
+//   - POST /api/iam/simulate — verbose evaluation with trace (superuser-only)
 func registerRoutes(app core.App, cache *PolicyCache, logger *slog.Logger) {
 	app.OnServe().BindFunc(func(se *core.ServeEvent) error {
 		se.Router.POST("/api/iam/check", func(e *core.RequestEvent) error {
