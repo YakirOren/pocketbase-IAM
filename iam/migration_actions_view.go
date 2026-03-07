@@ -6,6 +6,8 @@ import (
 )
 
 func init() {
+	// The migration name is kept as the original filename for backwards compatibility
+	// with existing databases that have already applied this migration.
 	core.SystemMigrations.Register(upCreateIAMActionsView, downCreateIAMActionsView, "2_create_iam_actions_view.go")
 }
 
@@ -33,10 +35,11 @@ func upCreateIAMActionsView(app core.App) error {
 	actions.ListRule = types.Pointer("@request.auth.id != ''")
 	actions.ViewRule = types.Pointer("@request.auth.id != ''")
 	actions.ViewQuery = `
-  SELECT id, action, source, description FROM (
+  SELECT id, action, resource, source, description FROM (
     SELECT
       CAST((mc.id || op.code) AS TEXT) as id,
-      CAST(('collections:' || mc.collection_name || ':' || op.v) AS TEXT) as action,
+      CAST(('collections:' || op.v) AS TEXT) as action,
+      CAST(mc.collection_name AS TEXT) as resource,
       'managed' as source,
       '' as description
     FROM iam_managed_collections mc
@@ -48,7 +51,7 @@ func upCreateIAMActionsView(app core.App) error {
       UNION ALL SELECT 'delete', 'd'
     ) op
     UNION ALL
-    SELECT ca.id, ca.action, 'registered', ca.description
+    SELECT ca.id, ca.action, '*' as resource, 'registered', ca.description
     FROM iam_action_registry ca
   )
 `

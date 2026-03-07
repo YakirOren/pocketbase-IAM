@@ -9,16 +9,6 @@ import (
 	"github.com/pocketbase/pocketbase/core"
 )
 
-const (
-	colPolicies           = "iam_policies"
-	colRolePolicies       = "iam_role_policies"
-	colUserPolicies       = "iam_user_policies"
-	colUserRoles          = "iam_user_roles"
-	colGroupUsers         = "iam_group_users"
-	colGroupPolicies      = "iam_group_policies"
-	colManagedCollections = "iam_managed_collections"
-)
-
 // registerEnforcementHooks registers hooks for Create, Update, Delete, View, and List
 // operations on all collections. Each hook checks if the collection is IAM-managed,
 // skips superusers and unauthenticated requests, then evaluates IAM policies.
@@ -40,15 +30,15 @@ func registerEnforcementHooks(app core.App, cache *PolicyCache, logger *slog.Log
 			return next()
 		}
 
-		action := ActionForOperation(collectionName, operation)
-		allowed, reason, err := Evaluate(app, cache, auth.Id, action, "*")
+		action := ActionForOperation(operation)
+		allowed, reason, err := Evaluate(app, cache, auth.Id, action, collectionName)
 		if err != nil {
-			logger.Error("IAM evaluation error", "error", err, "user", auth.Id, "action", action)
+			logger.Error("IAM evaluation error", "error", err, "user", auth.Id, "action", action, "resource", collectionName)
 			return apis.NewApiError(500, "internal error", nil)
 		}
 		if !allowed {
-			logger.Warn("IAM access denied", "user", auth.Id, "action", action, "reason", reason)
-			return apis.NewForbiddenError("access denied", nil)
+			logger.Warn("IAM access denied", "user", auth.Id, "action", action, "resource", collectionName, "reason", reason)
+			return apis.NewNotFoundError("", nil)
 		}
 		return next()
 	}
@@ -107,7 +97,6 @@ func registerDuplicatePreventionHooks(app core.App) {
 	}
 
 	for _, jt := range joinTables {
-		jt := jt
 		app.OnRecordCreateRequest(jt.collection).BindFunc(func(e *core.RecordRequestEvent) error {
 			val1 := e.Record.GetString(jt.field1)
 			val2 := e.Record.GetString(jt.field2)

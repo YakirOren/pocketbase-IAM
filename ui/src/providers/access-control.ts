@@ -22,8 +22,8 @@ export const accessControlProvider: AccessControlProvider = {
         {
           method: "POST",
           body: {
-            action: `collections:${resource}:${iamAction}`,
-            resource: "*",
+            action: `collections:${iamAction}`,
+            resource: resource,
           },
         },
       );
