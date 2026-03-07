@@ -6,8 +6,6 @@ import (
 )
 
 func init() {
-	// The migration name is kept as the original filename for backwards compatibility
-	// with existing databases that have already applied this migration.
 	core.SystemMigrations.Register(upCreateIAMActionsView, downCreateIAMActionsView, "2_create_iam_actions_view.go")
 }
 
