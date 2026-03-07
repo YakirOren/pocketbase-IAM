@@ -26,7 +26,7 @@ func registerRoutes(app core.App, cache *PolicyCache, logger *slog.Logger) {
 				return e.BadRequestError("action is required", nil)
 			}
 			if body.Resource == "" {
-				body.Resource = "*"
+				return e.BadRequestError("resource is required", nil)
 			}
 
 			// Superusers bypass IAM (consistent with middleware behavior)
@@ -76,7 +76,7 @@ func registerRoutes(app core.App, cache *PolicyCache, logger *slog.Logger) {
 				return e.BadRequestError("action is required", nil)
 			}
 			if body.Resource == "" {
-				body.Resource = "*"
+				return e.BadRequestError("resource is required", nil)
 			}
 
 			result, err := EvaluateVerbose(app, cache, body.UserID, body.Action, body.Resource)
