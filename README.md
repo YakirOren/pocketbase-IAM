@@ -15,7 +15,7 @@ AWS IAM-inspired policy-based access control for PocketBase.
 
 ## Quick Start
 
-**Prerequisites:** Go 1.24+, Node 18+ (for the admin UI)
+**Prerequisites:** Go 1.26+, Node 18+ (for the admin UI)
 
 ```bash
 git clone https://github.com/YakirOren/pocketbase-IAM.git
