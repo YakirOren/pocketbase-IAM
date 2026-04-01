@@ -5,6 +5,7 @@ import { defineConfig } from "vite";
 
 export default defineConfig({
   plugins: [react(), tailwindcss()],
+  base: "/_/iam/",
   resolve: {
     alias: {
       "@": path.resolve(__dirname, "./src"),
@@ -12,6 +13,9 @@ export default defineConfig({
   },
   server: {
     port: 5173,
+    // Proxy API and PocketBase admin routes to the local PB instance.
+    // The /_  prefix also covers /_/iam/ which lets the dev server
+    // forward auth-related requests to PB during development.
     proxy: {
       "/api": {
         target: "http://127.0.0.1:8090",
@@ -24,7 +28,7 @@ export default defineConfig({
     },
   },
   build: {
-    outDir: "../pb_public",
+    outDir: "../iam/dashboard",
     emptyOutDir: true,
   },
 });

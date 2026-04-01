@@ -100,7 +100,7 @@ export function Simulator() {
           <Input
             value={action}
             onChange={(e) => setAction(e.target.value)}
-            placeholder="e.g. collections:posts:read"
+            placeholder="e.g. collections:read"
             list="action-suggestions"
           />
           <datalist id="action-suggestions">
@@ -115,7 +115,7 @@ export function Simulator() {
           <Input
             value={resource}
             onChange={(e) => setResource(e.target.value)}
-            placeholder="* (default)"
+            placeholder="e.g. posts, * (default)"
           />
         </div>
 

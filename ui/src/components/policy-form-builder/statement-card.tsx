@@ -84,14 +84,14 @@ export function StatementCard({
           label="Actions"
           values={statement.action}
           onChange={(action) => onChange({ ...statement, action })}
-          placeholder="e.g. collections:posts:read"
+          placeholder="e.g. collections:read"
         />
 
         <TagListInput
           label="Resources"
           values={statement.resource}
           onChange={(resource) => onChange({ ...statement, resource })}
-          placeholder="e.g. *"
+          placeholder="e.g. posts, *"
         />
       </CardContent>
     </Card>

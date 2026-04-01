@@ -1,4 +1,4 @@
-package migrations
+package iam
 
 import (
 	"github.com/pocketbase/pocketbase/core"
@@ -32,24 +32,27 @@ func upCreateIAMActionsView(app core.App) error {
 	actions.System = true
 	actions.ListRule = types.Pointer("@request.auth.id != ''")
 	actions.ViewRule = types.Pointer("@request.auth.id != ''")
-	actions.ViewQuery = `SELECT * FROM (
-  SELECT
-    mc.id || op.code as id,
-    'collections:' || mc.collection_name || ':' || op.v as action,
-    'managed' as source,
-    '' as description
-  FROM iam_managed_collections mc
-  CROSS JOIN (
-    SELECT 'list' as v, 'l' as code
-    UNION ALL SELECT 'view', 'v'
-    UNION ALL SELECT 'create', 'c'
-    UNION ALL SELECT 'update', 'u'
-    UNION ALL SELECT 'delete', 'd'
-  ) op
-  UNION ALL
-  SELECT ca.id, ca.action, 'registered', ca.description
-  FROM iam_action_registry ca
-)`
+	actions.ViewQuery = `
+  SELECT id, action, resource, source, description FROM (
+    SELECT
+      CAST((mc.id || op.code) AS TEXT) as id,
+      CAST(('collections:' || op.v) AS TEXT) as action,
+      CAST(mc.collection_name AS TEXT) as resource,
+      'managed' as source,
+      '' as description
+    FROM iam_managed_collections mc
+    CROSS JOIN (
+      SELECT 'list' as v, 'l' as code
+      UNION ALL SELECT 'view', 'v'
+      UNION ALL SELECT 'create', 'c'
+      UNION ALL SELECT 'update', 'u'
+      UNION ALL SELECT 'delete', 'd'
+    ) op
+    UNION ALL
+    SELECT ca.id, ca.action, '*' as resource, 'registered', ca.description
+    FROM iam_action_registry ca
+  )
+`
 	if err := app.Save(actions); err != nil {
 		return err
 	}

@@ -3,7 +3,7 @@ package iam
 import "testing"
 
 func TestParsePolicy(t *testing.T) {
-	validJSON := `{"version":"2024-01-01","statement":[{"sid":"s1","effect":"Allow","action":["collections:posts:read"],"resource":["*"]}]}`
+	validJSON := `{"version":"2024-01-01","statement":[{"sid":"s1","effect":"Allow","action":["collections:read"],"resource":["*"]}]}`
 
 	t.Run("string input", func(t *testing.T) {
 		doc, err := ParsePolicy(validJSON)
@@ -38,7 +38,7 @@ func TestParsePolicy(t *testing.T) {
 				map[string]any{
 					"sid":      "s1",
 					"effect":   "Allow",
-					"action":   []any{"collections:posts:read"},
+					"action":   []any{"collections:read"},
 					"resource": []any{"*"},
 				},
 			},
@@ -86,7 +86,7 @@ func TestValidatePolicy(t *testing.T) {
 	validDoc := &PolicyDocument{
 		Version: "2024-01-01",
 		Statement: []Statement{
-			{SID: "s1", Effect: "Allow", Action: []string{"collections:posts:read"}, Resource: []string{"*"}},
+			{SID: "s1", Effect: "Allow", Action: []string{"collections:read"}, Resource: []string{"*"}},
 		},
 	}
 
@@ -100,7 +100,7 @@ func TestValidatePolicy(t *testing.T) {
 		doc := &PolicyDocument{
 			Version: "v1",
 			Statement: []Statement{
-				{SID: "s1", Effect: "Deny", Action: []string{"collections:posts:read"}, Resource: []string{"*"}},
+				{SID: "s1", Effect: "Deny", Action: []string{"collections:read"}, Resource: []string{"*"}},
 			},
 		}
 		if err := ValidatePolicy(doc); err != nil {
@@ -198,8 +198,8 @@ func TestValidatePolicy(t *testing.T) {
 		doc := &PolicyDocument{
 			Version: "v1",
 			Statement: []Statement{
-				{SID: "s1", Effect: "Allow", Action: []string{"collections:posts:read"}, Resource: []string{"*"}},
-				{SID: "s2", Effect: "Deny", Action: []string{"collections:users:delete"}, Resource: []string{"*"}},
+				{SID: "s1", Effect: "Allow", Action: []string{"collections:read"}, Resource: []string{"*"}},
+				{SID: "s2", Effect: "Deny", Action: []string{"collections:delete"}, Resource: []string{"*"}},
 			},
 		}
 		if err := ValidatePolicy(doc); err != nil {

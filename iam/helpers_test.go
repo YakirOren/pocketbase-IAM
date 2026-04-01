@@ -60,23 +60,21 @@ func TestMatchPattern(t *testing.T) {
 
 func TestActionForOperation(t *testing.T) {
 	tests := []struct {
-		collection string
-		operation  string
-		want       string
+		operation string
+		want      string
 	}{
-		{"posts", "read", "collections:posts:read"},
-		{"posts", "create", "collections:posts:create"},
-		{"posts", "update", "collections:posts:update"},
-		{"posts", "delete", "collections:posts:delete"},
-		{"posts", "list", "collections:posts:list"},
-		{"users", "read", "collections:users:read"},
+		{"read", "collections:read"},
+		{"create", "collections:create"},
+		{"update", "collections:update"},
+		{"delete", "collections:delete"},
+		{"list", "collections:list"},
 	}
 
 	for _, tt := range tests {
-		t.Run(tt.collection+":"+tt.operation, func(t *testing.T) {
-			got := ActionForOperation(tt.collection, tt.operation)
+		t.Run(tt.operation, func(t *testing.T) {
+			got := ActionForOperation(tt.operation)
 			if got != tt.want {
-				t.Errorf("ActionForOperation(%q, %q) = %q, want %q", tt.collection, tt.operation, got, tt.want)
+				t.Errorf("ActionForOperation(%q) = %q, want %q", tt.operation, got, tt.want)
 			}
 		})
 	}

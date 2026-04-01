@@ -1,13 +1,17 @@
 package iam
 
 import (
+	"log/slog"
 	"net/http"
 
 	"github.com/pocketbase/pocketbase/apis"
 	"github.com/pocketbase/pocketbase/core"
 )
 
-func registerRoutes(app core.App, cache *PolicyCache) {
+// registerRoutes adds the IAM API endpoints:
+//   - POST /api/iam/check — evaluate an action for the authenticated user
+//   - POST /api/iam/simulate — verbose evaluation with trace (superuser-only)
+func registerRoutes(app core.App, cache *PolicyCache, logger *slog.Logger) {
 	app.OnServe().BindFunc(func(se *core.ServeEvent) error {
 		se.Router.POST("/api/iam/check", func(e *core.RequestEvent) error {
 			var body struct {
@@ -22,7 +26,7 @@ func registerRoutes(app core.App, cache *PolicyCache) {
 				return e.BadRequestError("action is required", nil)
 			}
 			if body.Resource == "" {
-				body.Resource = "*"
+				return e.BadRequestError("resource is required", nil)
 			}
 
 			// Superusers bypass IAM (consistent with middleware behavior)
@@ -34,7 +38,7 @@ func registerRoutes(app core.App, cache *PolicyCache) {
 
 			allowed, reason, err := Evaluate(app, cache, userID, body.Action, body.Resource)
 			if err != nil {
-				app.Logger().Error("IAM evaluation error",
+				logger.Error("IAM evaluation error",
 					"user", userID,
 					"action", body.Action,
 					"resource", body.Resource,
@@ -44,7 +48,7 @@ func registerRoutes(app core.App, cache *PolicyCache) {
 			}
 
 			if !allowed {
-				app.Logger().Warn("IAM access denied",
+				logger.Warn("IAM access denied",
 					"user", userID,
 					"action", body.Action,
 					"resource", body.Resource,
@@ -72,12 +76,12 @@ func registerRoutes(app core.App, cache *PolicyCache) {
 				return e.BadRequestError("action is required", nil)
 			}
 			if body.Resource == "" {
-				body.Resource = "*"
+				return e.BadRequestError("resource is required", nil)
 			}
 
 			result, err := EvaluateVerbose(app, cache, body.UserID, body.Action, body.Resource)
 			if err != nil {
-				app.Logger().Error("IAM simulate error",
+				logger.Error("IAM simulate error",
 					"user", body.UserID,
 					"action", body.Action,
 					"resource", body.Resource,

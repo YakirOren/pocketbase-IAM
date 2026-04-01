@@ -1,0 +1,8 @@
+/* Nav logo: subtle scale on hover */
+.VPNavBarTitle .logo {
+  transition: transform 300ms ease-in-out;
+}
+
+.VPNavBarTitle:hover .logo {
+  transform: scale(1.1);
+}

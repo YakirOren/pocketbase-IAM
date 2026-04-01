@@ -22,7 +22,7 @@ import { Simulator } from "@/pages/simulator";
 function App() {
   return (
     <ThemeProvider>
-    <BrowserRouter>
+    <BrowserRouter basename="/_/iam">
       <Refine
         routerProvider={routerProvider}
         dataProvider={pbDataProvider}

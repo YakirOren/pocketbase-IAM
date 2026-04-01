@@ -2,27 +2,18 @@ package main
 
 import (
 	"log"
-	"os"
-	"strings"
 
 	"github.com/pocketbase/pocketbase"
-	"github.com/pocketbase/pocketbase/plugins/migratecmd"
 
-	_ "pocketbase-iam/migrations"
-
-	"pocketbase-iam/iam"
+	"github.com/yakiroren/pocketbase-IAM/iam"
 )
 
 func main() {
 	app := pocketbase.New()
 
-	isGoRun := strings.HasPrefix(os.Args[0], os.TempDir())
-	migratecmd.MustRegister(app, app.RootCmd, migratecmd.Config{
-		Automigrate: isGoRun,
-	})
-
-	iam.RegisterRoutes(app)
-	iam.RegisterHooks(app)
+	if err := iam.Setup(app, iam.DefaultOptions()); err != nil {
+		log.Fatalf("Failed to setup IAM: %v", err)
+	}
 
 	if err := app.Start(); err != nil {
 		log.Fatal(err)

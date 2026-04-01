@@ -4,6 +4,7 @@ import (
 	"database/sql"
 	"errors"
 	"fmt"
+	"strings"
 
 	"github.com/pocketbase/dbx"
 	"github.com/pocketbase/pocketbase/core"
@@ -14,7 +15,7 @@ import (
 func RegisterAction(app core.App, action, description string) error {
 	// Check if already registered.
 	_, err := app.FindFirstRecordByFilter(
-		"iam_action_registry",
+		colActionRegistry,
 		"action = {:action}",
 		dbx.Params{"action": action},
 	)
@@ -25,7 +26,7 @@ func RegisterAction(app core.App, action, description string) error {
 		return fmt.Errorf("failed to check action registry for %q: %w", action, err)
 	}
 
-	col, err := app.FindCollectionByNameOrId("iam_action_registry")
+	col, err := app.FindCollectionByNameOrId(colActionRegistry)
 	if err != nil {
 		return fmt.Errorf("failed to find iam_action_registry collection: %w", err)
 	}
@@ -35,8 +36,11 @@ func RegisterAction(app core.App, action, description string) error {
 	record.Set("description", description)
 
 	if err := app.Save(record); err != nil {
-		// Unique constraint violation from a concurrent call — treat as success.
-		return nil
+		// Unique constraint violation from a concurrent registration — treat as success.
+		if strings.Contains(err.Error(), "UNIQUE constraint failed") {
+			return nil
+		}
+		return fmt.Errorf("failed to register action %q: %w", action, err)
 	}
 	return nil
 }

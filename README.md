@@ -7,7 +7,7 @@ AWS IAM-inspired policy-based access control for PocketBase.
 - **Policy-based RBAC** — JSON policy documents with Allow/Deny statements
 - **Deny overrides Allow** — explicit Deny always wins, matching AWS IAM evaluation
 - **Multiple attachment paths** — policies attach to users directly, via roles, or via groups
-- **Wildcard matching** — `*` patterns in actions and resources (`collections:*:read`, `collections:posts:*`)
+- **Wildcard matching** — `*` patterns in actions and resources (`collections:*`, `*`)
 - **Opt-in enforcement** — only registered "managed collections" are gated by IAM
 - **Action registry** — discoverable actions via `iam_actions` view
 - **Policy simulator** — test permissions before deploying (superuser-only)
@@ -34,20 +34,20 @@ Open `http://localhost:8090/_/` and create a superuser account.
     {
       "sid": "AllowReadPosts",
       "effect": "Allow",
-      "action": ["collections:posts:read", "collections:posts:list"],
-      "resource": ["*"]
+      "action": ["collections:read", "collections:list"],
+      "resource": ["posts"]
     },
     {
-      "sid": "DenyDeleteUsers",
+      "sid": "DenyDeleteAny",
       "effect": "Deny",
-      "action": ["collections:users:delete"],
+      "action": ["collections:delete"],
       "resource": ["*"]
     }
   ]
 }
 ```
 
-Each statement requires `effect` (Allow/Deny), `action` (array), and `resource` (array). `sid` is optional but recommended. `version` is required.
+Each statement requires `effect` (Allow/Deny), `action` (array), and `resource` (array). Actions describe **what** can be done, resources describe **what it applies to** — following the AWS IAM model. `sid` is optional but recommended. `version` is required.
 
 ## How It Works
 
@@ -61,20 +61,24 @@ Each statement requires `effect` (Allow/Deny), `action` (array), and `resource` 
    - No match → implicit deny (403)
 5. **Non-managed collections** are unaffected — PocketBase's native rules apply as usual.
 
-## Action Format
+## Action & Resource Format
 
-CRUD operations on managed collections use the pattern:
+Actions describe the operation. Resources describe the target.
 
+**CRUD operations** on managed collections:
+- Action: `collections:<operation>` (e.g., `collections:read`, `collections:list`)
+- Resource: the collection name (e.g., `posts`, `users`, or `*` for all)
+
+Where operation is: `list`, `view`, `create`, `update`, `delete`.
+
+One statement can grant access to multiple collections:
+```json
+{ "action": ["collections:read"], "resource": ["posts", "comments"] }
 ```
-collections:<name>:<operation>
-```
 
-Where operation is: `list`, `read`, `create`, `update`, `delete`.
-
-Custom actions can be registered in the action registry and checked via the API:
-
-```
-custom:billing:refund
+**Custom actions** can be registered in the action registry and checked via the API:
+```json
+{ "action": ["custom:billing:refund"], "resource": ["order:*"] }
 ```
 
 ## API Endpoints
@@ -86,7 +90,7 @@ custom:billing:refund
 
 **`/api/iam/check`** request:
 ```json
-{ "action": "collections:posts:read", "resource": "*" }
+{ "action": "collections:read", "resource": "posts" }
 ```
 Response:
 ```json
@@ -95,7 +99,7 @@ Response:
 
 **`/api/iam/simulate`** request:
 ```json
-{ "user_id": "USER_ID", "action": "collections:posts:read", "resource": "*" }
+{ "user_id": "USER_ID", "action": "collections:read", "resource": "posts" }
 ```
 Response includes the full evaluation trace with matched statements.
 

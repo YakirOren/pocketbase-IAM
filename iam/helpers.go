@@ -30,6 +30,6 @@ func MatchPattern(pattern, value string) bool {
 }
 
 // ActionForOperation builds the IAM action string for a PocketBase collection operation.
-func ActionForOperation(collectionName, operation string) string {
-	return "collections:" + collectionName + ":" + operation
+func ActionForOperation(operation string) string {
+	return "collections:" + operation
 }
